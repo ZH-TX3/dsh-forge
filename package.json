@@ -1,0 +1,48 @@
+{
+  "name": "dsh-forge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "分层的提示词/上下文锻造插件：L1 system prompt · L1b runtime context · L2 user message · L3 历史 · L5 UI，中间件式扩展；L0 宿主能力表统一参数化，源码补丁走数据 + 六道闸。",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./core": "./core/pipeline.js",
+    "./capabilities": "./core/capabilities.js",
+    "./patches": "./patches/catalog.js",
+    "./package.json": "./package.json"
+  },
+  "engines": {
+    "node": ">=22.15",
+    "dsh": ">=0.2.0-rc.2"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "check": "node --check index.js && node --check backend.js && node --check scripts/forge.mjs && node --test tests/*.test.js",
+    "forge": "node scripts/forge.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ZH-TX3/dsh-forge.git"
+  },
+  "homepage": "https://github.com/ZH-TX3/dsh-forge#readme",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
+    },
+    "install": {
+      "preferred": "git",
+      "git": "https://github.com/ZH-TX3/dsh-forge.git",
+      "tarball": "https://codeload.github.com/ZH-TX3/dsh-forge/tar.gz/main"
+    }
+  },
+  "dshTarget": "0.2.0-rc.2"
+}

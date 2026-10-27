@@ -1,0 +1,14 @@
+# 依赖
+node_modules/
+
+# 运行时产物：补丁备份、日志
+*.forge.bak
+*.log
+
+# 本机配置（可能含 sha256 / 路径，不入库）
+config.json
+
+# 编辑器 / 系统
+.DS_Store
+.idea/
+.vscode/
