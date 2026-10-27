@@ -188,8 +188,20 @@ update:
 ```
 
 ```
-node scripts/forge.mjs update check     # 解析 ref → commit sha，看远版本
+node scripts/forge.mjs update check     # 解析 ref → commit sha，看远版本与认证状态
+node scripts/forge.mjs update pin       # 下载并算出归档 sha256（不写盘、不应用）
 node scripts/forge.mjs update apply     # 需要 sha256 已钉住
+```
+
+**私有仓库必须带 token。** GitHub 对无凭据的私有仓库返回 **404 而不是 403**，很容易误判成
+"仓库不存在"。token 优先级：`update.token` > `GITHUB_TOKEN` > `GH_TOKEN` > 本机 `gh auth token`。
+
+钉住当前版本：
+
+```bash
+node scripts/forge.mjs update pin
+#   sha256: "803872c3…"
+# 把这行写进 cordis.patch.yml 的 update 段
 ```
 
 流程：`ref` → commit sha（内容寻址，不能悄悄换内容）→ 按 sha 下载（不按 branch）→
@@ -217,7 +229,7 @@ node scripts/forge.mjs session restore <file>
 
 ```bash
 node --check index.js backend.js
-node --test tests/*.test.js      # 90 个断言
+node --test tests/*.test.js      # 100 个断言
 ```
 
 `tests/extensibility.test.js` 证明「加层是数据变更」：用自定义 `LAYERS` 表（多出 `L4`/`L5`）

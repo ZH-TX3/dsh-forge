@@ -26,7 +26,7 @@ import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 
 export const DEFAULT_REPO = 'ZH-TX3/dsh-forge'
-const ALLOWED_HOSTS = new Set(['api.github.com', 'codeload.github.com'])
+const ALLOWED_HOSTS = new Set(['api.github.com', 'codeload.github.com', 'raw.githubusercontent.com'])
 
 export const COPY_NAMES = [
   'index.js',
@@ -51,8 +51,19 @@ function assertUrl(url) {
   return url
 }
 
-async function get(url, headers = {}) {
-  const res = await fetch(assertUrl(url), { headers: { 'user-agent': 'dsh-forge', ...headers }, redirect: 'follow' })
+/**
+ * 私有仓库必须带 token，否则 GitHub API 返回 404（不是 403）—— 很容易误判成"仓库不存在"。
+ * token 优先级：settings.token > GITHUB_TOKEN > GH_TOKEN。
+ */
+function authHeaders(token) {
+  return token ? { authorization: `Bearer ${token}` } : {}
+}
+
+async function get(url, headers = {}, token = '') {
+  const res = await fetch(assertUrl(url), {
+    headers: { 'user-agent': 'dsh-forge', ...authHeaders(token), ...headers },
+    redirect: 'follow',
+  })
   if (!res.ok) throw new Error(`${res.status} ${res.statusText} ${url}`)
   return res
 }
@@ -68,28 +79,31 @@ export function repoFromPackage(pkg) {
   return match ? match[1] : DEFAULT_REPO
 }
 
-export function updateSettings(config = {}, pkg = {}) {
+export function updateSettings(config = {}, pkg = {}, env = process.env) {
   const raw = config?.update || {}
   return {
     repo: String(raw.repo || repoFromPackage(pkg) || DEFAULT_REPO),
     ref: String(raw.ref || 'main'),
     sha256: String(raw.sha256 || '').trim().toLowerCase(),
+    token: String(raw.token || env.GITHUB_TOKEN || env.GH_TOKEN || ''),
   }
 }
 
 /** ref → commit sha。 */
-export async function resolveRef(repo, ref) {
-  const res = await get(`https://api.github.com/repos/${repo}/commits/${encodeURIComponent(ref)}`, {
-    accept: 'application/vnd.github+json',
-  })
+export async function resolveRef(repo, ref, token = '') {
+  const res = await get(
+    `https://api.github.com/repos/${repo}/commits/${encodeURIComponent(ref)}`,
+    { accept: 'application/vnd.github+json' },
+    token,
+  )
   const data = await res.json()
   if (!data?.sha) throw new Error(`解析 ${repo}@${ref} 失败`)
   return String(data.sha)
 }
 
 /** 远端 package.json 里的版本号（判断是否落后）。 */
-export async function remoteVersion(repo, sha) {
-  const res = await get(`https://raw.githubusercontent.com/${repo}/${sha}/package.json`).catch(() => null)
+export async function remoteVersion(repo, sha, token = '') {
+  const res = await get(`https://raw.githubusercontent.com/${repo}/${sha}/package.json`, {}, token).catch(() => null)
   if (!res) return ''
   try {
     const text = await res.text()
@@ -112,8 +126,8 @@ export function localVersion(dir) {
  * @returns {Promise<{repo,ref,sha,remoteVersion,localVersion,behind,pinned,canApply}>}
  */
 export async function checkUpdate(settings) {
-  const sha = await resolveRef(settings.repo, settings.ref)
-  const version = await remoteVersion(settings.repo, sha)
+  const sha = await resolveRef(settings.repo, settings.ref, settings.token)
+  const version = await remoteVersion(settings.repo, sha, settings.token)
   return {
     repo: settings.repo,
     ref: settings.ref,
@@ -125,9 +139,20 @@ export async function checkUpdate(settings) {
   }
 }
 
+/**
+ * 只下载并算出归档 sha256，不校验、不写盘。
+ * 供 `update pin` 用：先拿到值，再写进配置，最后才 apply。
+ */
+export async function computeArchiveHash(settings) {
+  const sha = await resolveRef(settings.repo, settings.ref, settings.token)
+  const res = await get(`https://codeload.github.com/${settings.repo}/tar.gz/${sha}`, {}, settings.token)
+  const buf = Buffer.from(await res.arrayBuffer())
+  return { sha, sha256: sha256(buf), bytes: buf.length }
+}
+
 /** 按 sha 下载归档并校验 sha256。校验不过直接抛。 */
 export async function fetchArchive(settings, sha) {
-  const res = await get(`https://codeload.github.com/${settings.repo}/tar.gz/${sha}`)
+  const res = await get(`https://codeload.github.com/${settings.repo}/tar.gz/${sha}`, {}, settings.token)
   const buf = Buffer.from(await res.arrayBuffer())
   const actual = sha256(buf)
   if (!settings.sha256) {
@@ -155,7 +180,7 @@ export async function applyUpdate(settings, opts) {
   if (!fs.existsSync(path.join(targetDir, 'package.json'))) throw new Error(`不是插件目录：${targetDir}`)
   if (!settings.sha256) throw new Error('未配置 update.sha256，拒绝 apply')
 
-  const sha = await resolveRef(settings.repo, settings.ref)
+  const sha = await resolveRef(settings.repo, settings.ref, settings.token)
   const { buf } = await fetchArchive(settings, sha)
   log(`归档校验通过 sha256=${settings.sha256}`)
 

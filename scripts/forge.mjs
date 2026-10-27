@@ -39,7 +39,8 @@ import {
 } from '../core/capabilities.js'
 import { PATCHES, isDefined, patchById } from '../patches/catalog.js'
 import { applyPatch, hostVersion, previewPatch, reportPatches, resolveAiBase, revertPatch } from '../core/patch.js'
-import { applyUpdate, checkUpdate, localVersion, updateSettings } from '../core/update.js'
+import { applyUpdate, checkUpdate, computeArchiveHash, localVersion, updateSettings } from '../core/update.js'
+import { spawnSync } from 'node:child_process'
 import { listSessions, readSession, redactSession, restoreSession, statSession } from '../core/l4.js'
 
 const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -182,9 +183,21 @@ function patchRevert(id) {
 
 /* ------------------------------------------------------------------ update */
 
+/** 私有仓库需要 token。环境变量没有时借用本机 gh 的凭据（只读一次）。 */
+function ghToken() {
+  if (process.env.GITHUB_TOKEN || process.env.GH_TOKEN) return ''
+  try {
+    const out = spawnSync('gh', ['auth', 'token'], { encoding: 'utf8', windowsHide: true, timeout: 10000 })
+    return out.status === 0 ? String(out.stdout || '').trim() : ''
+  } catch {
+    return ''
+  }
+}
+
 async function updateCmd(config, sub) {
   const settings = updateSettings(config)
   if (!settings.repo) throw new Error('未配置 update.repo')
+  if (!settings.token) settings.token = ghToken()
 
   if (sub === 'check') {
     const info = await checkUpdate(settings)
@@ -192,7 +205,18 @@ async function updateCmd(config, sub) {
     console.log(`sha    ${info.sha}`)
     console.log(`远版本 ${info.remoteVersion || '(未知)'}   本地 ${localVersion(PLUGIN_ROOT) || '(未知)'}`)
     console.log(`钉住   ${info.pinned ? '是' : '否 —— apply 会被拒绝'}`)
+    console.log(`认证   ${settings.token ? '已带 token' : '未带 token（私有仓库会 404）'}`)
     if (!info.pinned) console.log('\n要允许 apply，请把上面的 sha 对应的归档 sha256 写进 update.sha256')
+    return
+  }
+
+  if (sub === 'pin') {
+    const info = await computeArchiveHash(settings)
+    console.log(`commit  ${info.sha}`)
+    console.log(`归档    ${info.bytes} bytes`)
+    console.log(`sha256  ${info.sha256}`)
+    console.log('\n把下面这一段写进 cordis.patch.yml 的 update 段：')
+    console.log(`  sha256: "${info.sha256}"`)
     return
   }
 
@@ -206,7 +230,7 @@ async function updateCmd(config, sub) {
     return
   }
 
-  throw new Error('update 子命令：check | apply')
+  throw new Error('update 子命令：check | pin | apply')
 }
 
 /* ------------------------------------------------------------------ session */
@@ -265,7 +289,7 @@ async function main() {
 
   cap list | apply <id> [--destructive] | revert <id>
   patch list | preview <id> | apply <id> | revert <id>
-  update check | apply [--dry-run]
+  update check | pin | apply [--dry-run]
   session list | stat <file> | redact <file> --pattern <re> [--apply] | restore <file>
 
 配置：$DSH_HOME/dsh-forge/config.json（与 cordis config 同形状）+ DSH_FORGE_* 环境变量
@@ -275,7 +299,17 @@ async function main() {
 
   if (group === 'cap') {
     if (sub === 'list' || !sub) return capList(config)
-    if (sub === 'apply') {
+    if (sub === 'pin') {
+    const info = await computeArchiveHash(settings)
+    console.log(`commit  ${info.sha}`)
+    console.log(`归档    ${info.bytes} bytes`)
+    console.log(`sha256  ${info.sha256}`)
+    console.log('\n把下面这一段写进 cordis.patch.yml 的 update 段：')
+    console.log(`  sha256: "${info.sha256}"`)
+    return
+  }
+
+  if (sub === 'apply') {
       if (!extra) throw new Error('需要能力 id')
       return capApply(config, extra)
     }
