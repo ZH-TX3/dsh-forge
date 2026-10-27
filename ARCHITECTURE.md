@@ -464,6 +464,7 @@ dsh-forge-drill     独立插件：SQLite 事实库 + 工具面 + UI
 | `tests/pipeline.test.js` | 13 | 注册/替换、priority 顺序、层过滤、覆盖开关、内置抛错冒泡 vs mod 只记日志、非数组返回值、runSync 拒 Promise |
 | `tests/layers.test.js` | 14 | **幂等性**（跑 10 次结果恒定）、纯函数（不改入参）、剔除段、context 去重、L2 逐 block 改写且保留图片 block、不误伤宿主合成消息 |
 | `tests/config.test.js` | 16 | 默认值、config 覆盖、环境变量优先级、danger 联锁、路径解析、loader 跳过 `_` 前缀、CRLF 往返、fingerprint |
+| `tests/client.test.js` | 6 | UI 冒烟：极简 React 展开组件树，验证面板渲染、300px 上限、空状态 |
 | `tests/effects.test.js` | 11 | 永久错误不重试、预算按 turn+step 独立、下游 decision 优先、max=0 关闭、continue-turn 明确报 unsupported |
 | `tests/source.test.js` | 11 | 提示词链五级优先级、规则激活/删除后回落、**从不写用户 AGENTS.md**、建议项来源与改法完整 |
 | `tests/capabilities.test.js` | 22 | 能力表结构与默认值、四级成本闸、补丁六道闸（版本/唯一命中/语法回滚/幂等/apply→revert）、L4 zstd 往返与回读校验 |

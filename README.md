@@ -293,7 +293,7 @@ node scripts/forge.mjs session restore <file>
 
 ```bash
 node --check index.js backend.js
-node --test tests/*.test.js      # 122 个断言
+node --test tests/*.test.js      # 128 个断言
 ```
 
 `tests/extensibility.test.js` 证明「加层是数据变更」：用自定义 `LAYERS` 表（多出 `L4`/`L5`）

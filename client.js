@@ -6,6 +6,7 @@ window.__ModuleLoader__.load({
     const { useState, useEffect, useCallback, useRef } = react
 
     const API = "/dsh-forge/api"
+    const PANEL_WIDTH = 300
     const POLL_MS = 5000
 
     async function api(op, opts = {}) {
@@ -40,7 +41,12 @@ window.__ModuleLoader__.load({
         background: on ? "var(--dsh-success, #3fb950)" : "var(--dsh-muted, #8b949e)",
         opacity: on ? 1 : 0.35,
       }),
+      // 窄栏：固定 300px 上限，不随插槽撑宽。
       panel: {
+        width: "100%",
+        maxWidth: PANEL_WIDTH,
+        boxSizing: "border-box",
+        overflow: "hidden",
         border: "1px solid var(--dsh-border, rgba(127,127,127,.28))",
         borderRadius: 8,
         padding: 10,
@@ -49,27 +55,41 @@ window.__ModuleLoader__.load({
         lineHeight: 1.6,
         background: "var(--dsh-surface, transparent)",
       },
-      row: { display: "flex", justifyContent: "space-between", gap: 12 },
+      // 容器也卡住宽度，避免外层块级元素把面板和 chip 拉到两端。
+      shell: { maxWidth: PANEL_WIDTH, display: "flex", flexDirection: "column", alignItems: "flex-start" },
+      grow: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+      row: { display: "flex", justifyContent: "space-between", gap: 8, minWidth: 0 },
+      journalLine: {
+        display: "flex",
+        gap: 6,
+        minWidth: 0,
+        fontSize: 11,
+        lineHeight: 1.5,
+        opacity: 0.85,
+      },
+      sep: {
+        marginTop: 6,
+        marginBottom: 6,
+        borderTop: "1px solid var(--dsh-border, rgba(127,127,127,.18))",
+      },
       dim: { opacity: 0.6 },
       mono: { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" },
       err: { color: "var(--dsh-danger, #f85149)" },
-      table: { width: "100%", borderCollapse: "collapse", marginTop: 6 },
-      th: { textAlign: "left", fontWeight: 600, opacity: 0.6, padding: "2px 6px 2px 0" },
-      td: { padding: "2px 6px 2px 0", verticalAlign: "top" },
+      journalBox: { maxHeight: 140, overflowY: "auto", overflowX: "hidden" },
     }
 
     function LayerRow({ id, on, count, title }) {
       return h(
         "div",
-        { style: styles.row },
+        { style: styles.row, title },
         h(
           "span",
-          null,
-          h("span", { style: { ...styles.dot(on), display: "inline-block", marginRight: 6 } }),
+          { style: { ...styles.grow, display: "flex", alignItems: "center", gap: 6 } },
+          h("span", { style: styles.dot(on) }),
           h("span", { style: styles.mono }, id),
-          h("span", { style: { ...styles.dim, marginLeft: 6 } }, title),
+          h("span", { style: { ...styles.dim, ...styles.grow } }, title || ""),
         ),
-        h("span", { style: styles.dim }, `${count} mw`),
+        h("span", { style: { ...styles.dim, flex: "0 0 auto" } }, `${count} mw`),
       )
     }
 
@@ -108,44 +128,41 @@ window.__ModuleLoader__.load({
                 .join(", ")}`,
             )
           : null,
+        h("div", { style: styles.sep }),
         journal && journal.items && journal.items.length
           ? h(
-              "table",
-              { style: styles.table },
-              h(
-                "thead",
-                null,
-                h(
-                  "tr",
-                  null,
-                  h("th", { style: styles.th }, "层"),
-                  h("th", { style: styles.th }, "中间件"),
-                  h("th", { style: styles.th }, "动作"),
-                  h("th", { style: styles.th }, "说明"),
-                ),
-              ),
-              h(
-                "tbody",
-                null,
-                journal.items
-                  .slice(-6)
-                  .reverse()
-                  .map((item, index) =>
+              "div",
+              { style: styles.journalBox },
+              journal.items
+                .slice(-8)
+                .reverse()
+                .map((item, index) =>
+                  h(
+                    "div",
+                    { key: index, style: styles.journalLine, title: `${item.id || ""} ${item.note || ""}` },
+                    h("span", { style: { ...styles.mono, flex: "0 0 auto", opacity: 0.7 } }, item.layer || "-"),
                     h(
-                      "tr",
-                      { key: index },
-                      h("td", { style: styles.td }, item.layer || "-"),
-                      h("td", { style: { ...styles.td, ...styles.mono } }, item.id || "-"),
-                      h("td", { style: { ...styles.td, ...(item.op === "error" ? styles.err : null) } }, item.op),
-                      h("td", { style: { ...styles.td, ...styles.dim } }, String(item.note || "").slice(0, 60)),
+                      "span",
+                      { style: { ...styles.mono, ...styles.grow, flex: "1 1 auto" } },
+                      item.id || "-",
+                    ),
+                    h(
+                      "span",
+                      {
+                        style: {
+                          flex: "0 0 auto",
+                          ...(item.op === "error" ? styles.err : styles.dim),
+                        },
+                      },
+                      item.op,
                     ),
                   ),
-              ),
+                ),
             )
-          : h("div", { style: { ...styles.dim, marginTop: 6 } }, "暂无变更记录"),
+          : h("div", { style: { ...styles.dim, fontSize: 11 } }, "暂无变更记录"),
         h(
           "div",
-          { style: { marginTop: 8, display: "flex", gap: 8 } },
+          { style: { marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" } },
           h(
             "button",
             {
@@ -219,15 +236,17 @@ window.__ModuleLoader__.load({
 
       return h(
         "div",
-        null,
-        open
-          ? h(Panel, { state, journal, onReload, busy })
-          : null,
+        { style: styles.shell },
+        open ? h(Panel, { state, journal, onReload, busy }) : null,
         h(
           "button",
-          { style: styles.chip, onClick: () => setOpen((v) => !v), title: "dsh-forge 状态" },
+          {
+            style: { ...styles.chip, maxWidth: "100%", overflow: "hidden" },
+            onClick: () => setOpen((v) => !v),
+            title: "dsh-forge 状态",
+          },
           h("span", { style: styles.dot(!!state && state.enabled) }),
-          h("span", null, `forge ${activeLayers || "—"}`),
+          h("span", { style: styles.grow }, `forge ${activeLayers || "—"}`),
           open ? h("span", { style: styles.dim }, "▲") : h("span", { style: styles.dim }, "▼"),
           error ? h("span", { style: styles.err }, "!") : null,
         ),
