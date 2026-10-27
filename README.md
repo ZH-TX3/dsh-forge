@@ -25,6 +25,11 @@
 
 L0 是**基座不是层**：沙箱模式 / 审批策略这些是宿主 config，本插件只读不写。
 
+除四层之外还有两样东西，分开放是因为它们不是「改数组」：
+
+- **EFFECTS**（行为注入）：如请求失败自动重试 —— 挂监听器，没有输入输出数组
+- **提示词链**：提示词正文从哪儿来，一条优先级链
+
 ---
 
 ## 安装
@@ -62,11 +67,70 @@ dsh plugin --profile web add /d/ds/plugins/dsh-forge
 
 ---
 
+## 提示词链
+
+优先级从高到低，第一个非空胜出：
+
+```
+1. config.promptFile                  显式指定
+2. $DSH_HOME/forge/rules/<active>.md  多套提示词，靠 active.json 切换
+3. <cwd>/AGENTS.md                    项目级
+4. <cwd>/CLAUDE.md                    项目级
+5. prompts/base.md                    插件自带默认
+```
+
+```
+node scripts/forge.mjs prompt list      # 有哪些、当前用哪个
+node scripts/forge.mjs prompt use work  # 激活 rules/work.md
+node scripts/forge.mjs prompt off       # 取消激活
+node scripts/forge.mjs prompt show      # 当前正文全文
+```
+
+**只读你的 `AGENTS.md` / `CLAUDE.md`，从不写。** purge 会覆盖它们，这里刻意不做。
+`promptSource: file` 可把链收窄成「只认 promptFile」。
+
+## 效果（EFFECTS）
+
+| 效果 | 默认 | 说明 |
+|---|---|---|
+| `request-retry` | on | 宿主在 `agent/request-error` 默认不重试。本效果在非永久错误上返回 `{kind:"retry"}`，按 turn+step 计预算（默认 3） |
+| `continue-turn` | off | **未实现**。宿主 `agent/status` 只 emit `{status}`，拿不到 agent 句柄，无法安全补发 followup。留占位不猜 API |
+
+```yaml
+effects:
+  request-retry: { enabled: true, max: 3 }
+  continue-turn: { enabled: false }
+```
+
+## L0 建议项（本来就不用打补丁）
+
+purge 有 4 条补丁改的其实是宿主 config。这里只展示「怎么改」，不替你做：
+
+```
+node scripts/forge.mjs advice
+```
+
+覆盖：沙箱模式、审批策略、读文件上限（`dsh-tool-fs.readLimit/readMaxBytes`）、
+子代理深度（`dsh-tool-subagent.maxDepth`）、持久 shell 超时（在预设 YAML 里）。
+
+## 看效果：preview
+
+```
+node scripts/preview.mjs                     # 走真实管线，用宿主自己的 renderPrompt 渲染
+node scripts/preview.mjs --preset minimal    # 模拟 complete:true：L1 失效、L1b 保留
+node scripts/preview.mjs --cwd D:\ds\plugins
+node scripts/preview.mjs --layer L2=on --layer L3=on
+```
+
+它不模拟渲染器 —— 直接 import 宿主的 `renderPrompt` / `renderContextSections`，
+所以看到的拼接结果和宿主发给模型的一模一样。
+
 ## 扩展的三档
 
 | 想做的事 | 改哪里 | 重启 |
 |---|---|---|
 | 加一个中间件 | `mods/xxx.mjs` | 不用（改文件即生效） |
+| 加一个效果 | `core/effects.js` 的 `EFFECTS` 加一行 | 要 |
 | 加一层（如 L4 = 工具清单） | `core/hooks.js` 的 `LAYERS` 加一行 | 要 |
 | 接一个新钩子 | `core/hooks.js` 的 `HOOKS` 加一行 | 要 |
 
@@ -229,7 +293,7 @@ node scripts/forge.mjs session restore <file>
 
 ```bash
 node --check index.js backend.js
-node --test tests/*.test.js      # 100 个断言
+node --test tests/*.test.js      # 122 个断言
 ```
 
 `tests/extensibility.test.js` 证明「加层是数据变更」：用自定义 `LAYERS` 表（多出 `L4`/`L5`）

@@ -24,6 +24,9 @@ import { readIfExists, resolvePrompt, clearCache as clearSourceCache } from './c
 import { loadMods, modDirStatus } from './core/loader.js'
 import { builtinMiddlewares, CONTEXT_SECTION, PROMPT_SECTION } from './layers/builtin.js'
 import { describeCapabilities, installCapabilities } from './core/capabilities.js'
+import { describeEffects, installEffects } from './core/effects.js'
+import { adviceReport } from './core/advice.js'
+import { activeRule, listRules, setActiveRule } from './core/source.js'
 import { PATCHES, isDefined } from './patches/catalog.js'
 import * as hostPolicy from './core/host.js'
 import { installBackend } from './backend.js'
@@ -70,8 +73,17 @@ export function apply(ctx, rawConfig = {}) {
   })
 
   /** 传给中间件的上下文。只读、每次现算。 */
+  function cwdOf(hostContext, extra) {
+    try {
+      return String((hostContext?.agent ?? extra?.agent)?.session?.header?.cwd || '').trim()
+    } catch {
+      return ''
+    }
+  }
+
   function forgeContext(hostContext, extra = {}) {
-    const prompt = resolvePrompt(config)
+    const cwd = cwdOf(hostContext, extra)
+    const prompt = resolvePrompt(config, { cwd })
     const contextDoc = readIfExists(CONTEXT_DOC)
     const agent = hostContext?.agent ?? extra.agent ?? null
     return {
@@ -80,7 +92,9 @@ export function apply(ctx, rawConfig = {}) {
       pipeline,
       promptText: prompt.text,
       promptFrom: prompt.from,
+      promptSource: prompt.source,
       promptExists: prompt.exists,
+      cwd,
       promptOrder: config.promptOrder,
       stripSections: config.stripSections,
       contextText: contextDoc ?? '',
@@ -95,6 +109,7 @@ export function apply(ctx, rawConfig = {}) {
   /* ---------------------------------------------------------------- 公开服务 */
 
   let capabilityResults = []
+  let effectResults = []
 
   const api = {
     name,
@@ -107,6 +122,22 @@ export function apply(ctx, rawConfig = {}) {
     reloadAll() {
       clearSourceCache()
       return reloadMods()
+    },
+    /** 提示词链：当前用的是哪一份、有哪些可选。 */
+    prompts() {
+      const prompt = resolvePrompt(config, { cwd: '' })
+      return {
+        active: activeRule(config.dshHome),
+        source: prompt.source,
+        from: prompt.from,
+        bytes: Buffer.byteLength(prompt.text, 'utf8'),
+        rules: listRules(config.dshHome),
+      }
+    },
+    useRule(id) {
+      const ok = setActiveRule(config.dshHome, id)
+      clearSourceCache()
+      return { ok, active: activeRule(config.dshHome) }
     },
     /** 层元数据 —— 让 UI 不必硬编码层名。 */
     layerMeta() {
@@ -121,7 +152,7 @@ export function apply(ctx, rawConfig = {}) {
     },
     /** 状态快照，供 backend / 命令 / 排障使用。 */
     status(hostCtx = ctx) {
-      const prompt = resolvePrompt(config)
+      const prompt = resolvePrompt(config, { cwd: '' })
       const contextDoc = readIfExists(CONTEXT_DOC)
       const closed = closedLayers(config)
       return {
@@ -130,7 +161,14 @@ export function apply(ctx, rawConfig = {}) {
         layers: Object.fromEntries(LAYER_IDS.map((id) => [id, layerOpen(config, id)])),
         layerMeta: api.layerMeta(),
         closed: [...closed],
-        prompt: { from: prompt.from, exists: prompt.exists, bytes: Buffer.byteLength(prompt.text, 'utf8') },
+        prompt: {
+          from: prompt.from,
+          source: prompt.source,
+          exists: prompt.exists,
+          bytes: Buffer.byteLength(prompt.text, 'utf8'),
+          activeRule: activeRule(config.dshHome),
+          rules: listRules(config.dshHome),
+        },
         context: { from: CONTEXT_DOC, bytes: Buffer.byteLength(contextDoc ?? '', 'utf8') },
         sections: { prompt: PROMPT_SECTION, context: CONTEXT_SECTION, order: config.promptOrder },
         counts: pipeline.countByLayer(),
@@ -139,6 +177,9 @@ export function apply(ctx, rawConfig = {}) {
         host: hostPolicy.snapshot(hostCtx ?? ctx),
         capabilities: capabilityResults,
         capabilityMeta: describeCapabilities(config),
+        effects: effectResults,
+        effectMeta: describeEffects(config),
+        advice: adviceReport(hostCtx ?? ctx),
         update: {
           repo: config.update.repo,
           ref: config.update.ref,
@@ -168,6 +209,9 @@ export function apply(ctx, rawConfig = {}) {
     applySourcePatches: false,
   })
   capabilityResults = caps.results
+
+  const effs = installEffects({ ctx, config, journal })
+  effectResults = effs.results
 
   /* ---------------------------------------------------------------- 接线：遍历声明表 */
 

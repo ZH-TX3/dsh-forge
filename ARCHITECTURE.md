@@ -135,10 +135,13 @@ dsh-forge/
 ├── package.json
 ├── client.js                L5：只读状态 chip / 面板（不改任何数据）
 ├── backend.js               L5 后端：GET /dsh-forge/api?op=state|journal
-├── scripts/forge.mjs        离线工装 CLI：cap / patch / update / session
+├── scripts/forge.mjs        离线工装 CLI：cap / prompt / effect / advice / patch / update / session
+├── scripts/preview.mjs      预览：走真实管线 + 宿主自己的 renderPrompt 渲染
 │
 ├── core/                    核心（稳定面，约 750 行）
-│   ├── hooks.js             ★ LAYERS + HOOKS 两张数据表（唯一的耦合面）
+│   ├── hooks.js             ★ LAYERS + HOOKS 两张数据表（数据改写的耦合面）
+│   ├── effects.js           ★ EFFECTS 第三张表（行为注入）
+│   ├── advice.js            L0 建议项（宿主可配的、不需要打补丁的）
 │   ├── runner.js            通用执行器：钩子形态 → 跑哪些层
 │   ├── pipeline.js          中间件注册表 + 顺序 + 开关 + 异步/同步两种 run
 │   ├── config.js            配置解析（默认 < cordis config < DSH_FORGE_* 环境变量）
@@ -446,7 +449,12 @@ dsh-forge-drill     独立插件：SQLite 事实库 + 工具面 + UI
 | P7 | 源码补丁引擎（六道闸）+ 补丁目录 | ✅ 完成 |
 | P8 | 自更新（绑 GitHub + 强制 sha256） | ✅ 完成 |
 | P9 | L4 离线会话工装（zstd） | ✅ 完成 |
-| P10 | `dsh-forge-drill` 独立插件 | ⬜ 待做（独立项目） |
+| P10 | 提示词链（promptFile → rules → cwd → base，只读用户文件） | ✅ 完成 |
+| P11 | EFFECTS 表 + request-retry（验证第三张表能扩） | ✅ 完成 |
+| P12 | L0 建议项（4 条 purge 补丁改成 config 展示） | ✅ 完成 |
+| P13 | 能力协议中间件（L1b，complete:true 下也不丢） | ✅ 完成 |
+| P14 | preview 工具（用宿主 renderPrompt 真实渲染） | ✅ 完成 |
+| P15 | `dsh-forge-drill` 独立插件 | ⬜ 待做（独立项目） |
 | — | 自测 | ✅ 90/90 通过，`node --check` 全绿 |
 
 ### 8.1 自测覆盖了什么
@@ -456,6 +464,8 @@ dsh-forge-drill     独立插件：SQLite 事实库 + 工具面 + UI
 | `tests/pipeline.test.js` | 13 | 注册/替换、priority 顺序、层过滤、覆盖开关、内置抛错冒泡 vs mod 只记日志、非数组返回值、runSync 拒 Promise |
 | `tests/layers.test.js` | 14 | **幂等性**（跑 10 次结果恒定）、纯函数（不改入参）、剔除段、context 去重、L2 逐 block 改写且保留图片 block、不误伤宿主合成消息 |
 | `tests/config.test.js` | 16 | 默认值、config 覆盖、环境变量优先级、danger 联锁、路径解析、loader 跳过 `_` 前缀、CRLF 往返、fingerprint |
+| `tests/effects.test.js` | 11 | 永久错误不重试、预算按 turn+step 独立、下游 decision 优先、max=0 关闭、continue-turn 明确报 unsupported |
+| `tests/source.test.js` | 11 | 提示词链五级优先级、规则激活/删除后回落、**从不写用户 AGENTS.md**、建议项来源与改法完整 |
 | `tests/capabilities.test.js` | 22 | 能力表结构与默认值、四级成本闸、补丁六道闸（版本/唯一命中/语法回滚/幂等/apply→revert）、L4 zstd 往返与回读校验 |
 | `tests/integration.test.js` | 13 | 用假 cordis ctx 跑真实 hook：L1+L1b 同时生效、反复过 hook 无叠加、单层关闭时另一层仍工作、全关时返回原对象、内部抛错原样返回、L2 默认不注册、L3 对象身份稳定、**drop-in mod 自动加载**、坏 mod 不拖垮插件 |
 

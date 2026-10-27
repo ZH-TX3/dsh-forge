@@ -29,6 +29,9 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { resolveConfig } from '../core/config.js'
+import { adviceReport } from '../core/advice.js'
+import { describeEffects } from '../core/effects.js'
+import { activeRule, listRules, resolvePrompt, rulesDir, setActiveRule } from '../core/source.js'
 import { Journal } from '../core/journal.js'
 import {
   CAPABILITIES,
@@ -133,6 +136,78 @@ function capApply(config, id) {
 function capRevert(config, id) {
   const out = revertCapability(id, { journal: new Journal(), dshHome: DSH_HOME })
   console.log(`${out.status}: ${out.detail || ''}`)
+}
+
+/* ------------------------------------------------------------------ prompt */
+
+function promptCmd(config, sub, id) {
+  const dir = rulesDir(config.dshHome)
+
+  if (sub === 'list' || !sub) {
+    const active = activeRule(config.dshHome)
+    const rules = listRules(config.dshHome)
+    console.log(`规则目录 ${dir}`)
+    if (rules.length === 0) {
+      console.log('  （空）把 .md 放进这个目录，然后 `prompt use <名字>`')
+    }
+    for (const name of rules) console.log(`  ${name === active ? '*' : ' '} ${name}`)
+    const resolved = resolvePrompt(config, { cwd: process.cwd() })
+    console.log(`
+当前生效: ${resolved.source}  (${resolved.from})`)
+    return
+  }
+
+  if (sub === 'use') {
+    if (!id) throw new Error('需要规则名（不带 .md）')
+    if (!listRules(config.dshHome).includes(id)) throw new Error(`没有这条规则：${id}`)
+    const out = setActiveRule(config.dshHome, id)
+    console.log(out ? `已激活 ${id}` : '写入失败')
+    return
+  }
+
+  if (sub === 'off') {
+    setActiveRule(config.dshHome, '')
+    console.log('已取消激活，回落到 cwd / 默认')
+    return
+  }
+
+  if (sub === 'show') {
+    const resolved = resolvePrompt(config, { cwd: process.cwd() })
+    console.log(`来源 ${resolved.source}`)
+    console.log(`文件 ${resolved.from}`)
+    console.log(`大小 ${Buffer.byteLength(resolved.text, 'utf8')} bytes`)
+    console.log('---')
+    console.log(resolved.text.trim() || '(空)')
+    return
+  }
+
+  throw new Error('prompt 子命令：list | use <id> | off | show')
+}
+
+/* ------------------------------------------------------------------ advice / effect */
+
+function adviceCmd(config) {
+  console.log('这些是宿主本来就能配的项 —— 不需要打源码补丁。\n')
+  for (const item of adviceReport(null)) {
+    const current = item.current === null ? '(运行时可读)' : item.current
+    console.log(`▸ ${item.title}   [${item.id}]`)
+    console.log(`  来源    ${item.source}`)
+    console.log(`  当前    ${current}`)
+    console.log(`  可选    ${item.values.join(' / ')}`)
+    console.log(`  怎么改  ${item.how}`)
+    console.log(`  备注    ${item.note}`)
+    console.log()
+  }
+}
+
+function effectCmd(config, sub) {
+  if (sub && sub !== 'list') throw new Error('effect 子命令：list')
+  console.log('效果（行为注入，与四层并列）\n')
+  for (const item of describeEffects(config)) {
+    const mark = item.enabled ? '[on] ' : '[  ] '
+    console.log(`${mark}${item.id.padEnd(16)} ${item.title}`)
+    console.log(`      ${item.detail}`)
+  }
 }
 
 /* ------------------------------------------------------------------ patch */
@@ -288,9 +363,15 @@ async function main() {
     console.log(`dsh-forge 工装
 
   cap list | apply <id> [--destructive] | revert <id>
+  prompt list | use <id> | off | show
+  effect list
+  advice
+  preview [--preset minimal] [--cwd DIR]
   patch list | preview <id> | apply <id> | revert <id>
   update check | pin | apply [--dry-run]
   session list | stat <file> | redact <file> --pattern <re> [--apply] | restore <file>
+
+  preview 走 scripts/preview.mjs（单独文件，见那里的 --help）
 
 配置：$DSH_HOME/dsh-forge/config.json（与 cordis config 同形状）+ DSH_FORGE_* 环境变量
 宿主运行时不会调用这里的任何写操作 —— 改宿主状态必须你亲自执行。`)
@@ -328,6 +409,9 @@ async function main() {
     throw new Error('patch 子命令：list | preview | apply | revert')
   }
 
+  if (group === 'prompt') return promptCmd(config, sub || 'list', extra)
+  if (group === 'advice') return adviceCmd(config)
+  if (group === 'effect') return effectCmd(config, sub)
   if (group === 'update') return updateCmd(config, sub || 'check')
 
   if (group === 'session') return sessionCmd(sub || 'list', extra)

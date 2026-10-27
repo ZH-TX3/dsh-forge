@@ -12,6 +12,20 @@
 export const PROMPT_SECTION = 'forge:prompt'
 export const CONTEXT_SECTION = 'forge:context'
 
+/**
+ * 按 order 稳定排序。
+ *
+ * 宿主的 assemble() 在 waterfall **之前**排过一次序；我们在之后追加/改写，
+ * 所以得自己排回来 —— 否则 forge:capability(998) 会排在 forge:context(999) 后面。
+ */
+function sortByOrder(list) {
+  return [...list].sort((a, b) => {
+    const ao = Number.isFinite(a?.order) ? a.order : 0
+    const bo = Number.isFinite(b?.order) ? b.order : 0
+    return ao - bo
+  })
+}
+
 /* ------------------------------------------------------------------ L1 */
 
 /**
@@ -60,9 +74,9 @@ export const contextInject = {
     const list = Array.isArray(contexts) ? contexts : []
     const body = String(ctx.contextText ?? '').trim()
     const others = list.filter((c) => c?.name !== CONTEXT_SECTION)
-    if (!body) return others
+    if (!body) return sortByOrder(others)
     // context 的 order 决定它渲染成第几条附加消息，取 999 排在官方策略后面。
-    return [...others, { name: CONTEXT_SECTION, order: 999, text: body }]
+    return sortByOrder([...others, { name: CONTEXT_SECTION, order: 999, text: body }])
   },
 }
 
@@ -79,10 +93,40 @@ export const contextOverride = {
     const map = ctx.contextOverrides && typeof ctx.contextOverrides === 'object' ? ctx.contextOverrides : null
     if (!map) return contexts
     const list = Array.isArray(contexts) ? contexts : []
-    return list.map((item) => {
-      const next = item && typeof item.name === 'string' ? map[item.name] : undefined
-      return typeof next === 'string' ? { ...item, text: next } : item
-    })
+    return sortByOrder(
+      list.map((item) => {
+        const next = item && typeof item.name === 'string' ? map[item.name] : undefined
+        return typeof next === 'string' ? { ...item, text: next } : item
+      }),
+    )
+  },
+}
+
+/**
+ * 能力协议 —— 教模型"先读目录，再按任务选"。
+ *
+ * 放 L1b 而不是 L1：这是每轮都必须生效的纪律，而 L1b 在 complete:true 预设下也不会丢。
+ * 刻意写短：它挂在每一步的运行时上下文里，长了就是在烧 token。
+ */
+const CAPABILITY_TEXT = `能力选用（按任务匹配，不是每次都调满，也不是永远不调）：
+1. 先看 \`<available_skills>\` / 技能目录 / 已挂的 MCP 与工具清单，知道有什么再动手。
+2. 按**当前这个任务**选需要的那几个，不必全用、也不必都不用。
+3. 命中的 Skill 用 \`skill\` 工具加载后按它执行；命中的 MCP/CLI 按 schema 调用。
+4. 目录里确实没有匹配项，才自己用 shell 拼，并说明缺了什么。
+5. 派子代理时在同一条指令里要求它也先读目录再选。`
+
+export const capabilityProtocol = {
+  id: 'core:capability-protocol',
+  layer: 'L1b',
+  priority: 300,
+  describe: '教模型先读 skill / MCP 目录，再按任务选用',
+  apply(contexts, ctx) {
+    if (ctx?.config?.capabilityProtocol === false) return contexts
+    const list = Array.isArray(contexts) ? contexts : []
+    return sortByOrder([
+      ...list.filter((c) => c?.name !== 'forge:capability'),
+      { name: 'forge:capability', order: 998, text: CAPABILITY_TEXT },
+    ])
   },
 }
 
@@ -153,6 +197,7 @@ function isUserAuthored(message) {
 export const builtinMiddlewares = Object.freeze([
   promptInject,
   contextInject,
+  capabilityProtocol,
   contextOverride,
   userStripEnvelope,
 ])

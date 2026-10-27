@@ -74,8 +74,9 @@ test('L1 + L1b 在 assemble hook 上同时生效', async () => {
   assert.ok(out.sections[0].text.length > 0)
   assert.equal(out.sections[0].interpolate, false)
   assert.ok(!out.sections.some((s) => s.name === 'harness:identity'), '默认剔除身份段')
-  assert.equal(out.contexts.at(-1).name, CONTEXT_SECTION)
-  assert.equal(out.contexts.length, 2)
+  assert.ok(out.contexts.some((c) => c.name === CONTEXT_SECTION))
+  assert.ok(out.contexts.some((c) => c.name === 'forge:capability'), '能力协议默认注入')
+  assert.equal(out.contexts.length, 3)
   assert.deepEqual(out.tools, [])
 })
 
@@ -105,7 +106,7 @@ test('L1 关闭时 sections 原样，L1b 仍然生效', async () => {
   const out = await handler(input, {}, nextReturning(input))
 
   assert.equal(out.sections, input.sections, 'sections 引用未变')
-  assert.equal(out.contexts.at(-1).name, CONTEXT_SECTION, 'contexts 仍被注入')
+  assert.ok(out.contexts.some((c) => c.name === CONTEXT_SECTION), 'contexts 仍被注入')
 })
 
 test('全部关闭时根本不接线（真·零开销）', () => {

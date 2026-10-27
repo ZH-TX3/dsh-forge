@@ -13,6 +13,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { LAYER_IDS, LAYERS } from './hooks.js'
 import { CAPABILITIES, CAPABILITY_IDS } from './capabilities.js'
+import { EFFECTS, EFFECT_IDS } from './effects.js'
 
 export const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -20,6 +21,10 @@ export const DEFAULTS = Object.freeze({
   enabled: true,
   verbose: false,
   promptFile: '',
+  // chain = promptFile → forge/rules/<active>.md → cwd 的 AGENTS.md/CLAUDE.md → prompts/base.md
+  // file  = 只用 promptFile
+  promptSource: 'chain',
+  capabilityProtocol: true,
   promptOrder: -1001,
   stripSections: ['harness:identity'],
   modsDir: '',
@@ -32,6 +37,10 @@ export const DEFAULTS = Object.freeze({
     readOnly: true,
     sourcePatch: { enabled: false },
     capabilities: Object.fromEntries(CAPABILITY_IDS.map((id) => [id, CAPABILITIES[id].default === true])),
+  },
+  effects: {
+    'request-retry': { enabled: true, max: 3 },
+    'continue-turn': { enabled: false },
   },
   update: { repo: '', ref: 'main', sha256: '' },
   middleware: {},
@@ -75,6 +84,8 @@ export function resolveConfig(raw = {}, env = process.env) {
     enabled: bool(env.DSH_FORGE_ENABLED, bool(src.enabled, DEFAULTS.enabled)),
     verbose: bool(env.DSH_FORGE_VERBOSE, bool(src.verbose, DEFAULTS.verbose)),
     promptFile: typeof src.promptFile === 'string' ? src.promptFile.trim() : DEFAULTS.promptFile,
+    promptSource: src.promptSource === 'file' ? 'file' : DEFAULTS.promptSource,
+    capabilityProtocol: bool(src.capabilityProtocol, DEFAULTS.capabilityProtocol),
     promptOrder: Number.isFinite(Number(src.promptOrder)) ? Number(src.promptOrder) : DEFAULTS.promptOrder,
     stripSections: strList(src.stripSections, DEFAULTS.stripSections),
     modsDir: typeof src.modsDir === 'string' ? src.modsDir.trim() : DEFAULTS.modsDir,
@@ -90,6 +101,23 @@ export function resolveConfig(raw = {}, env = process.env) {
         }),
       ),
     },
+    effects: Object.fromEntries(
+      EFFECT_IDS.map((id) => {
+        const conf = (obj(src.effects, {}))[id]
+        const fallback = DEFAULTS.effects[id]
+        if (typeof conf === 'boolean') return [id, { enabled: conf }]
+        if (conf && typeof conf === 'object') {
+          return [
+            id,
+            {
+              enabled: bool(conf.enabled, fallback.enabled),
+              ...(Number.isFinite(Number(conf.max)) ? { max: Number(conf.max) } : fallback.max !== undefined ? { max: fallback.max } : {}),
+            },
+          ]
+        }
+        return [id, fallback]
+      }),
+    ),
     update: {
       repo: typeof updateIn.repo === 'string' ? updateIn.repo.trim() : DEFAULTS.update.repo,
       ref: typeof updateIn.ref === 'string' && updateIn.ref.trim() ? updateIn.ref.trim() : DEFAULTS.update.ref,

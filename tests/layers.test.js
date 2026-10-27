@@ -5,6 +5,7 @@ import {
   PROMPT_SECTION,
   builtinMiddlewares,
   contextInject,
+  capabilityProtocol,
   contextOverride,
   promptInject,
   userStripEnvelope,
@@ -88,8 +89,9 @@ test('L1b contextOverride 只在有映射时改写', () => {
   assert.deepEqual(contextOverride.apply(input, baseCtx), input)
 
   const out = contextOverride.apply(input, { ...baseCtx, contextOverrides: { 'approval:policy': 'new' } })
-  assert.equal(out[0].text, 'new')
-  assert.equal(out[1].text, 'keep')
+  // 输出按 order 排序，所以按名称断言而不是下标
+  assert.equal(out.find((c) => c.name === 'approval:policy').text, 'new')
+  assert.equal(out.find((c) => c.name === 'sandbox:policy').text, 'keep')
 })
 
 test('L2 剥壳只作用于用户文本', () => {
@@ -120,10 +122,23 @@ test('L2 保留非文本 block', () => {
   assert.deepEqual(out[0].content[1], { type: 'image', data: 'x' })
 })
 
-test('内置集合覆盖四层中的三层（L3 留给 mods）', () => {
+test('内置集合覆盖 L1 / L1b / L2（L3 留给 mods）', () => {
   const layers = builtinMiddlewares.map((m) => m.layer)
   assert.ok(layers.includes('L1'))
   assert.ok(layers.includes('L1b'))
   assert.ok(layers.includes('L2'))
   assert.ok(!layers.includes('L3'))
+})
+
+test('能力协议写在 L1b，且幂等、按 order 排序', () => {
+  const input = [{ name: 'sandbox:policy', order: 110, text: 'x' }]
+  const once = capabilityProtocol.apply(input, { config: {} })
+  assert.deepEqual(once.map((c) => c.name), ['sandbox:policy', 'forge:capability'])
+  assert.equal(once.at(-1).order, 998)
+
+  const twice = capabilityProtocol.apply(once, { config: {} })
+  assert.equal(twice.filter((c) => c.name === 'forge:capability').length, 1)
+
+  const off = capabilityProtocol.apply(input, { config: { capabilityProtocol: false } })
+  assert.equal(off.length, 1)
 })
