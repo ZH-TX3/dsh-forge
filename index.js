@@ -26,6 +26,7 @@ import { builtinMiddlewares, CONTEXT_SECTION, PROMPT_SECTION } from './layers/bu
 import { describeCapabilities, installCapabilities } from './core/capabilities.js'
 import { describeEffects, installEffects } from './core/effects.js'
 import { adviceReport } from './core/advice.js'
+import { isEnabled as stateEnabled, readState, writeState } from './core/state.js'
 import { activeRule, listRules, setActiveRule } from './core/source.js'
 import { PATCHES, isDefined } from './patches/catalog.js'
 import * as hostPolicy from './core/host.js'
@@ -49,6 +50,9 @@ export function apply(ctx, rawConfig = {}) {
   pipeline.registerAll(builtinMiddlewares, 'builtin')
 
   let modState = { dir: modsDir, exists: false, files: [], errors: [] }
+
+  /** 总开关：配置允许 + 用户运行时开关。每步都会问，读的是 500ms TTL 缓存。 */
+  const active = () => stateEnabled(config.dshHome, config)
 
   async function reloadMods() {
     const { specs, errors } = await loadMods(modsDir)
@@ -134,6 +138,16 @@ export function apply(ctx, rawConfig = {}) {
         rules: listRules(config.dshHome),
       }
     },
+    /** 运行时开关。 */
+    state() {
+      return { ...readState(config.dshHome), configEnabled: config.enabled !== false }
+    },
+    setEnabled(enabled) {
+      const next = writeState(config.dshHome, { enabled: !!enabled })
+      journal.record({ layer: 'core', id: 'switch', op: next.enabled ? 'enable' : 'disable' })
+      return next
+    },
+    isActive: active,
     useRule(id) {
       const ok = setActiveRule(config.dshHome, id)
       clearSourceCache()
@@ -155,8 +169,11 @@ export function apply(ctx, rawConfig = {}) {
       const prompt = resolvePrompt(config, { cwd: '' })
       const contextDoc = readIfExists(CONTEXT_DOC)
       const closed = closedLayers(config)
+      const st = readState(config.dshHome)
       return {
-        enabled: config.enabled,
+        enabled: config.enabled !== false && st.enabled !== false,
+        configEnabled: config.enabled !== false,
+        switchAt: st.at,
         verbose: config.verbose,
         layers: Object.fromEntries(LAYER_IDS.map((id) => [id, layerOpen(config, id)])),
         layerMeta: api.layerMeta(),
@@ -210,7 +227,7 @@ export function apply(ctx, rawConfig = {}) {
   })
   capabilityResults = caps.results
 
-  const effs = installEffects({ ctx, config, journal })
+  const effs = installEffects({ ctx, config, journal, isActive: active })
   effectResults = effs.results
 
   /* ---------------------------------------------------------------- 接线：遍历声明表 */
@@ -221,6 +238,7 @@ export function apply(ctx, rawConfig = {}) {
     forgeContext,
     closedLayers: () => closedLayers(config),
     layerEnabled: (id) => layerOpen(config, id),
+    isActive: active,
   })
 
   if (config.enabled) {
@@ -238,8 +256,8 @@ export function apply(ctx, rawConfig = {}) {
 
   if (config.verbose) {
     const state = LAYER_IDS.map((id) => `${id}:${layerOpen(config, id) ? 'on' : 'off'}`).join(' ')
-    const active = capabilityResults.filter((c) => c.enabled).map((c) => `${c.id}:${c.status}`).join(',') || 'none'
-    console.log(`[dsh-forge] ${state} mods=${modState.files.length} caps=${active}`)
+    const capsText = capabilityResults.filter((c) => c.enabled).map((c) => `${c.id}:${c.status}`).join(',') || 'none'
+    console.log(`[dsh-forge] ${state} on=${active()} mods=${modState.files.length} caps=${capsText}`)
   }
 }
 

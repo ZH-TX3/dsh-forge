@@ -1,13 +1,17 @@
 /**
  * L5 后端：只读状态 API。
  *
- * 全部动作都是「读」或「重载」，没有任何写配置/写文件的入口 ——
- * 面板看到的东西必须和管线实际行为一致，不能让 UI 变成第二份真相。
+ * 唯一会写盘的动作是**运行时开关**（state.json）与重载。
+ * 它不碰 cordis 配置、不碰插件文件 —— 面板看到的东西必须和管线实际行为一致，
+ * 不能让 UI 变成第二份真相。
  *
  *   GET  /dsh-forge/api?op=state            状态快照（默认）
  *   GET  /dsh-forge/api?op=journal&n=40     最近变更明细
  *   POST /dsh-forge/api?op=reload           清提示词缓存 + 重载 mods
  *   POST /dsh-forge/api?op=clear            清空日志
+ *   POST /dsh-forge/api?op=enable           打开总开关
+ *   POST /dsh-forge/api?op=disable          关闭总开关
+ *   POST /dsh-forge/api?op=toggle           翻转总开关
  *
  * 只接受回环来源。webServer 一般只绑 127.0.0.1，这里再加一道。
  */
@@ -59,6 +63,13 @@ export function installBackend(ctx, forge) {
           if (op === 'clear') {
             forge.journal.clear()
             return send(res, 200, { ok: true })
+          }
+
+          if (op === 'enable' || op === 'disable' || op === 'toggle') {
+            const current = forge.state().enabled !== false
+            const next = op === 'toggle' ? !current : op === 'enable'
+            const state = forge.setEnabled(next)
+            return send(res, 200, { ok: true, enabled: state.enabled !== false, at: state.at })
           }
 
           return send(res, 404, { ok: false, error: `unknown op: ${op}` })

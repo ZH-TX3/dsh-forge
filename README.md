@@ -113,6 +113,24 @@ node scripts/forge.mjs advice
 覆盖：沙箱模式、审批策略、读文件上限（`dsh-tool-fs.readLimit/readMaxBytes`）、
 子代理深度（`dsh-tool-subagent.maxDepth`）、持久 shell 超时（在预设 YAML 里）。
 
+## 总开关（运行时）
+
+面板右上角的 `开 / 关` 才是真开关：关掉之后**四层改写、能力、效果全部停用**，
+配置不动，打开即恢复，不需要重启。
+
+```
+状态落在 $DSH_HOME/dsh-forge/state.json（与 cordis 配置分开）
+POST /dsh-forge/api?op=toggle     # 或 enable / disable
+```
+
+为什么不做成纯 UI 开关：只隐藏面板没有意义。用户以为关了、提示词还在注入，是更坏的结果。
+
+## 位置
+
+面板挂在 `conversation.input.dock`，但宿主的 `composerStack` 是 `flex-direction:column`
+且该插槽排在输入框**之前**。宿主没有「输入框下方」的插槽，所以用 `order:1`
+把它排到最后 —— 视觉上就是输入框下面，宽度 300px。不改宿主任何代码。
+
 ## 看效果：preview
 
 ```
@@ -293,7 +311,7 @@ node scripts/forge.mjs session restore <file>
 
 ```bash
 node --check index.js backend.js
-node --test tests/*.test.js      # 128 个断言
+node --test tests/*.test.js      # 137 个断言
 ```
 
 `tests/extensibility.test.js` 证明「加层是数据变更」：用自定义 `LAYERS` 表（多出 `L4`/`L5`）

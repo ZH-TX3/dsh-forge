@@ -18,9 +18,18 @@ import { HOOKS, LAYERS, groupFields } from './hooks.js'
  * @param {(hostContext:object, extra:object)=>object} deps.forgeContext
  * @param {()=>Set<string>} deps.closedLayers
  * @param {(layerId:string)=>boolean} deps.layerEnabled 该层此刻是否启用（配置说了算）
+ * @param {()=>boolean} [deps.isActive] 总开关（配置 + 运行时开关）。假则所有改写直接原样返回
  * @param {Record<string,object>} [deps.layers]
  */
-export function createRunner({ pipeline, journal, forgeContext, closedLayers, layerEnabled, layers = LAYERS }) {
+export function createRunner({
+  pipeline,
+  journal,
+  forgeContext,
+  closedLayers,
+  layerEnabled,
+  isActive = () => true,
+  layers = LAYERS,
+}) {
   const groups = Object.fromEntries(Object.keys(HOOKS).map((id) => [id, groupFields(id, layers)]))
 
   const fail = (hook, error) =>
@@ -43,6 +52,7 @@ export function createRunner({ pipeline, journal, forgeContext, closedLayers, la
    */
   async function runObject(hookId, original, hostContext) {
     if (!original || typeof original !== 'object') return original
+    if (!isActive()) return original
     let out = original
 
     for (const [field, ids] of groups[hookId] ?? []) {
@@ -63,6 +73,7 @@ export function createRunner({ pipeline, journal, forgeContext, closedLayers, la
 
   /** messages 形态：整个数组交给该钩子上的所有层。 */
   async function runMessages(hookId, messages, hostContext) {
+    if (!isActive()) return messages
     const ids = layerIdsOnHook(hookId)
     if (!ids.some((id) => layerEnabled(id))) return messages
     const closed = closedLayers()
@@ -87,6 +98,7 @@ export function createRunner({ pipeline, journal, forgeContext, closedLayers, la
 
     session[method] = function wrappedMethod(...args) {
       const base = original(...args)
+      if (!isActive()) return base
       if (!ids.some((id) => layerEnabled(id))) return base
       const closed = closedLayers()
 

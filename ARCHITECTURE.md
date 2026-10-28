@@ -142,6 +142,7 @@ dsh-forge/
 │   ├── hooks.js             ★ LAYERS + HOOKS 两张数据表（数据改写的耦合面）
 │   ├── effects.js           ★ EFFECTS 第三张表（行为注入）
 │   ├── advice.js            L0 建议项（宿主可配的、不需要打补丁的）
+│   ├── state.js             运行时总开关（$DSH_HOME/dsh-forge/state.json）
 │   ├── runner.js            通用执行器：钩子形态 → 跑哪些层
 │   ├── pipeline.js          中间件注册表 + 顺序 + 开关 + 异步/同步两种 run
 │   ├── config.js            配置解析（默认 < cordis config < DSH_FORGE_* 环境变量）
@@ -454,7 +455,8 @@ dsh-forge-drill     独立插件：SQLite 事实库 + 工具面 + UI
 | P12 | L0 建议项（4 条 purge 补丁改成 config 展示） | ✅ 完成 |
 | P13 | 能力协议中间件（L1b，complete:true 下也不丢） | ✅ 完成 |
 | P14 | preview 工具（用宿主 renderPrompt 真实渲染） | ✅ 完成 |
-| P15 | `dsh-forge-drill` 独立插件 | ⬜ 待做（独立项目） |
+| P15 | 运行时总开关（state.json + 管线闸 + UI 开关 + HTTP op） | ✅ 完成 |
+| P16 | `dsh-forge-drill` 独立插件 | ⬜ 待做（独立项目） |
 | — | 自测 | ✅ 90/90 通过，`node --check` 全绿 |
 
 ### 8.1 自测覆盖了什么

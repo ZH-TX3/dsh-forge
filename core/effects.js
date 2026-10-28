@@ -32,7 +32,7 @@ export const EFFECTS = Object.freeze({
     title: '请求失败自动重试',
     detail:
       '宿主在 agent/request-error 上默认不重试（next 返回 undefined 即抛错）。本效果在非永久错误上返回 {kind:"retry"}，按 turn+step 计预算。',
-    install({ ctx, journal, options }) {
+    install({ ctx, journal, options, isActive = () => true }) {
       const max = Math.max(0, Math.min(10, Number(options?.max ?? 3)))
       if (max === 0) return { status: 'off', detail: 'retryMax=0' }
 
@@ -43,6 +43,7 @@ export const EFFECTS = Object.freeze({
       const handler = async (payload, next) => {
         // 先让下游（宿主的 retryPolicy / 其它插件）表态，不抢决策。
         const action = typeof next === 'function' ? await next() : undefined
+        if (!isActive()) return action
         if (action?.kind === 'retry') return action
 
         const code = String(payload?.failure?.code ?? '')
@@ -88,7 +89,7 @@ export const EFFECT_IDS = Object.freeze(Object.keys(EFFECTS))
  * 安装效果。
  * @param {{ctx:object, config:object, journal:object}} deps
  */
-export function installEffects({ ctx, config, journal }) {
+export function installEffects({ ctx, config, journal, isActive = () => true }) {
   const results = []
   const disposers = []
   const wants = config?.effects || {}
@@ -102,7 +103,7 @@ export function installEffects({ ctx, config, journal }) {
       continue
     }
     try {
-      const out = effect.install({ ctx, config, journal, options }) || { status: 'noop' }
+      const out = effect.install({ ctx, config, journal, options, isActive }) || { status: 'noop' }
       if (Array.isArray(out.disposers)) disposers.push(...out.disposers)
       results.push({ id, enabled: true, status: out.status, detail: out.detail, title: effect.title })
     } catch (error) {

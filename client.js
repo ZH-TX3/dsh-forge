@@ -56,7 +56,16 @@ window.__ModuleLoader__.load({
         background: "var(--dsh-surface, transparent)",
       },
       // 容器也卡住宽度，避免外层块级元素把面板和 chip 拉到两端。
-      shell: { maxWidth: PANEL_WIDTH, display: "flex", flexDirection: "column", alignItems: "flex-start" },
+      // composerStack 是 flex-direction:column，而本插槽在输入框之前；
+      // 宿主没有「输入框下方」的插槽，所以用 order 把它排到最后（= 输入框下方）。
+      shell: {
+        maxWidth: PANEL_WIDTH,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "flex-start",
+        order: 1,
+        marginTop: 4,
+      },
       grow: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
       row: { display: "flex", justifyContent: "space-between", gap: 8, minWidth: 0 },
       journalLine: {
@@ -66,6 +75,27 @@ window.__ModuleLoader__.load({
         fontSize: 11,
         lineHeight: 1.5,
         opacity: 0.85,
+      },
+      toggle: (on) => ({
+        flex: "0 0 auto",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+        padding: "1px 8px",
+        borderRadius: 999,
+        border: "1px solid var(--dsh-border, rgba(127,127,127,.35))",
+        background: on ? "var(--dsh-success-bg, rgba(63,185,80,.15))" : "transparent",
+        color: "inherit",
+        font: "inherit",
+        fontSize: 11,
+        cursor: "pointer",
+        opacity: on ? 1 : 0.65,
+      }),
+      offBanner: {
+        marginTop: 6,
+        fontSize: 11,
+        opacity: 0.75,
+        lineHeight: 1.5,
       },
       sep: {
         marginTop: 6,
@@ -93,8 +123,9 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function Panel({ state, journal, onReload, busy }) {
+    function Panel({ state, journal, onReload, onToggle, busy }) {
       if (!state) return h("div", { style: styles.panel }, "dsh-forge: 读取状态中…")
+      const on = state.enabled !== false
       // 层清单由后端提供（state.layerMeta），UI 不硬编码层名 —— 加层时前端不用改。
       const layers = Array.isArray(state.layerMeta)
         ? state.layerMeta.map((m) => [m.id, m.title || ""])
@@ -105,13 +136,31 @@ window.__ModuleLoader__.load({
         h(
           "div",
           { style: styles.row },
-          h("strong", null, "dsh-forge"),
+          h("strong", { style: { flex: "0 0 auto" } }, "dsh-forge"),
+          h(
+            "button",
+            {
+              type: "button",
+              style: styles.toggle(on),
+              onClick: onToggle,
+              title: on ? "点击关闭：四层改写与效果全部停用" : "点击打开",
+              "aria-pressed": on ? "true" : "false",
+            },
+            on ? "开" : "关",
+          ),
           h(
             "span",
-            { style: styles.dim },
-            `${state.prompt.bytes}B prompt · ${state.context.bytes}B ctx · ${(state.mods.files || []).length} mods`,
+            { style: { ...styles.dim, ...styles.grow, flex: "1 1 auto", textAlign: "right" } },
+            `${state.prompt.bytes}B · ${state.context.bytes}B · ${(state.mods.files || []).length} mods`,
           ),
         ),
+        on
+          ? null
+          : h(
+              "div",
+              { style: styles.offBanner },
+              "总开关已关闭：四层改写、能力、效果全部不生效（配置未变，打开即恢复）。",
+            ),
         h(
           "div",
           { style: { marginTop: 6 } },
@@ -216,6 +265,18 @@ window.__ModuleLoader__.load({
         }
       }, [refresh])
 
+      const onToggle = useCallback(async () => {
+        setBusy(true)
+        try {
+          await api("toggle", { method: "POST" })
+          await refresh()
+        } catch (err) {
+          setError(String(err && err.message ? err.message : err))
+        } finally {
+          setBusy(false)
+        }
+      }, [refresh])
+
       const onReload = useCallback(async () => {
         setBusy(true)
         try {
@@ -228,6 +289,7 @@ window.__ModuleLoader__.load({
         }
       }, [refresh])
 
+      const on = !!state && state.enabled !== false
       const activeLayers = state
         ? Object.keys(state.layers || {})
             .filter((id) => state.layers[id])
@@ -245,8 +307,8 @@ window.__ModuleLoader__.load({
             onClick: () => setOpen((v) => !v),
             title: "dsh-forge 状态",
           },
-          h("span", { style: styles.dot(!!state && state.enabled) }),
-          h("span", { style: styles.grow }, `forge ${activeLayers || "—"}`),
+          h("span", { style: styles.dot(on) }),
+          h("span", { style: styles.grow }, on ? `forge ${activeLayers || "—"}` : "forge off"),
           open ? h("span", { style: styles.dim }, "▲") : h("span", { style: styles.dim }, "▼"),
           error ? h("span", { style: styles.err }, "!") : null,
         ),
