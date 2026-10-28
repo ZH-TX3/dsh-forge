@@ -197,8 +197,11 @@ features/<id>/
 | `middleware` | 已实现 | `system-prompt/assemble` 瀑布 | V-G1..G4 |
 | `bypass-approval` | 已实现 | `approval/request` 瀑布（agent 作用域） | V-H1..H3 |
 | `hooks-bypass` | 已实现 | `tools/pre-execute` 瀑布 + `prepend` | V-I1..I4 |
-| `bypass-fs` | 待做 | 换 `ctx.fs` provider（`dsh-fs-local` ↔ `dsh-fs-sandbox`） | — |
-| `chain` | 待做 | `systemPrompt.section` + `context` | — |
+| `capability-protocol` | 已实现 | `systemPrompt.context` | V-J3 |
+| `identity-strip` | 已实现 | 同名 scoped `section` 覆盖 | V-J1 / V-J2 |
+| `request-retry` | 已实现 | `agent/request-error` 瀑布 | V-K1..K4 |
+| `auto-continue` | 已实现（默认关） | `agent/status` + `session/event` | V-L1..L5 |
+| `bypass-fs` | 待做（需实验） | 换 `ctx.fs` provider | — |
 | `toolbox.*` | 待做 | 模式内命令 | — |
 
 ### 两条从 purge 那边换来的教训

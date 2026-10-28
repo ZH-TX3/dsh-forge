@@ -14,8 +14,8 @@
 | A1 | 长人设整套替换 | 注入大段 prompt | `systemPrompt.section({complete})`，作用域内 | **已实现** |
 | A2 | 必须生效的短规则 | 塞进同一段 | `systemPrompt.context()`，complete 收尾不丢 | **已实现** |
 | A3 | 工作区上下文前言改写（#1/#2/#3） | 改 `agent-instructions` 常量 | 同名 scoped `section` 覆盖 | 有条件：段名需确认 |
-| A4 | 身份行剥离（#25 `harness:identity`） | 改 `system-prompt` 常量 | 同名 scoped `section` 覆盖（段名已知） | 能做 |
-| A5 | 能力路由协议（skills/MCP 先读后 DIY） | `section` 注入，三变体 | `section` + `context` | 能做（零补丁原样可搬） |
+| A4 | 身份行剥离（#25 `harness:identity`） | 改 `system-prompt` 常量 | 同名 scoped `section` 覆盖（段名已知） | **已实现** |
+| A5 | 能力路由协议（skills/MCP 先读后 DIY） | `section` 注入，三变体 | `context`（complete 后仍保留） | **已实现** |
 | A6 | persona 前缀别名（#38） | 改段名兼容 | 不存在此问题（v2 自命名段） | 不需要 |
 
 ## B 沙箱与审批
@@ -47,7 +47,7 @@
 | # | 能力 | purge 的手段 | 宿主 seam | 判断 |
 |---|---|---|---|---|
 | D1 | rewind 回退到某 turn | 私有 surface 写会话 | 无公开写入口（append 不接受新 type） | **不能** |
-| D2 | 自动续跑 / 重试 | `agent/status` + followup | 事件 + `agent.followup()` | 能做（v1 有实现可搬） |
+| D2 | 自动续跑 / 重试 | `agent/status` + followup | `agent/status` + `agent/request-error` + `agent.followup()` | **已实现**（续跑默认关） |
 | D3 | 会话 v0 别名（#39） | 改 session-format 常量 | 宿主兼容层，非模式 | 不该做 |
 | D4 | 加密资产表 | 自造加密槽 + 解包 | v2 有意用明文文件 | 不做 |
 
@@ -74,13 +74,13 @@
 | 判断 | 条数 | 说明 |
 |---|---|---|
 | 已实现 | 3 | A1 A2 B4 C1 |
-| 能做 | 4 | A4 A5 C5 D2 |
+| 能做 | 1 | C5（需复制整条 fs 工具链，暂缓） |
 | 有条件 | 7 | A3 B3 B5 B6 B7 C2 C3 |
 | 不能 | 3 | B8 C6 D1 |
 | 不该做 / 不需要 | 9 | 部署面与产品面 |
 
 **结论：purge 的能力大头要么已在作用域内实现，要么属于部署面。**
-真正值得继续投入的只有「能做」那 4 条和「有条件」里的 B5/B7（沙箱与 fs 替换）。
+现在只剩 C5（能复制但不想复制）和「有条件」里的 B5/B7 值得投入。
 
 ---
 

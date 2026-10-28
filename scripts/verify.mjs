@@ -433,6 +433,151 @@ check(
   '',
 )
 
+/* ------------------------------------ V-J 身份行剥离 / 能力协议（真装配） */
+
+const identityFeature = await import(new URL('../features/identity-strip/index.js', import.meta.url).href)
+const capFeature = await import(new URL('../features/capability-protocol/index.js', import.meta.url).href)
+const CAP_MARK = '能力使用协议'
+
+const idHost = await newHost()
+const idKey = {}
+const idScope = createScope(idHost, idKey)
+await idScope.ctx.plugin(identityFeature, { name: 'harness:identity', text: '' })
+const idAsm = await idHost.systemPrompt.assemble({ scope: idKey })
+
+const ctlKey = {}
+createScope(idHost, ctlKey)
+const ctlAsm = await idHost.systemPrompt.assemble({ scope: ctlKey })
+
+const idSection = find(idAsm.sections, 'harness:identity')
+const ctlSection = find(ctlAsm.sections, 'harness:identity')
+
+check(
+  'V-J1',
+  '同名 scoped 段覆盖全局：身份行在自己的 scope 里被剥成空',
+  Boolean(idSection) && String(idSection.text) === '' && String(ctlSection?.text || '').length > 0,
+  `本 scope=${JSON.stringify(idSection?.text)} 对照=${JSON.stringify(ctlSection?.text?.slice(0, 24))}`,
+)
+
+// 同一个 scope 里再挂 persona(complete) 与能力协议，验两件事：
+// ① complete 会把同名段吃掉（文档里写的互斥），② context 不受影响。
+await forge.scope.ctx.plugin(identityFeature, { name: 'harness:identity', text: '' })
+await forge.scope.ctx.plugin(capFeature, { file: 'data/capability-protocol.md', order: 50 })
+const enriched = await sp.assemble({ scope: forge.key })
+
+check(
+  'V-J2',
+  'persona 设 complete 时身份行剥离是空操作（sections 被收成单段）',
+  enriched.sections.length === 1 && enriched.sections[0].name === 'forge:persona',
+  `sections=${JSON.stringify(names(enriched.sections))}`,
+)
+
+check(
+  'V-J3',
+  '能力协议走 context，complete 收尾之后依然在',
+  String(find(enriched.contexts, 'forge:capability-protocol')?.text || '').includes(CAP_MARK) &&
+    find(otherAsm.contexts, 'forge:capability-protocol') === undefined,
+  `contexts=${JSON.stringify(names(enriched.contexts))}`,
+)
+
+/* ------------------------------------------------- V-K 请求失败兜底重试 */
+
+const retryFeature = await import(new URL('../features/request-retry/index.js', import.meta.url).href)
+
+const retryHost = new Context()
+const retryKey = {}
+const retryScope = createScope(retryHost, retryKey)
+await retryScope.ctx.plugin(retryFeature, { enabled: true, max: 2, permanent: [] })
+
+const errorDispatch = (payload) =>
+  retryHost.waterfall(scopeTarget({}, retryKey), 'agent/request-error', payload, () => Promise.resolve(undefined))
+
+const transient = await errorDispatch({ agent: { id: 'a' }, turn: 1, step: 1, failure: { code: 'NETWORK', message: 'x' } })
+check(
+  'V-K1',
+  '宿主放弃时，瞬时失败被兜底成 retry',
+  transient?.kind === 'retry',
+  `decision=${JSON.stringify(transient)}`,
+)
+
+const retryTwice = await errorDispatch({ agent: { id: 'a' }, turn: 1, step: 1, failure: { code: 'NETWORK', message: 'x' } })
+const retryThird = await errorDispatch({ agent: { id: 'a' }, turn: 1, step: 1, failure: { code: 'NETWORK', message: 'x' } })
+check(
+  'V-K2',
+  '按 (agent,turn,step) 计预算：第三次不再补（max=2）',
+  retryTwice?.kind === 'retry' && retryThird === undefined,
+  `second=${JSON.stringify(retryTwice)} third=${JSON.stringify(retryThird)}`,
+)
+
+check(
+  'V-K3',
+  '终态错误码不重试（HTTP 401 / 码名含 PERMISSION / 自带 permanent 表）',
+  retryFeature.decide({ failure: { code: 'X', status: 401 } }, { max: 2 }) === undefined &&
+    retryFeature.decide({ failure: { code: 'PERMISSION_DENIED' } }, { max: 2 }) === undefined &&
+    retryFeature.decide({ failure: { code: 'MINE' } }, { max: 2, permanent: ['MINE'] }) === undefined,
+  '',
+)
+
+check(
+  'V-K4',
+  '已 abort 的请求不重试；enabled:false 不干预',
+  retryFeature.decide({ failure: { code: 'NETWORK' }, signal: { aborted: true } }, { max: 2 }) === undefined &&
+    retryFeature.decide({ failure: { code: 'NETWORK' } }, { enabled: false, max: 2 }) === undefined,
+  '',
+)
+
+/* --------------------------------------------------- V-L 自动续跑判决链 */
+
+const cont = await import(new URL('../features/auto-continue/index.js', import.meta.url).href)
+const ON = { enabled: true, max: 3 }
+const idle = (extra) => ({ status: 'idle', kind: 'error', used: 0, ...extra })
+
+check(
+  'V-L1',
+  '默认关闭；开启后异常结束 + 空闲才续',
+  cont.shouldContinue(idle({}), { enabled: false }) === false &&
+    cont.shouldContinue(idle({}), ON) === true &&
+    cont.shouldContinue(idle({ status: 'running' }), ON) === false,
+  '',
+)
+
+check(
+  'V-L2',
+  '没干完才续：completed / blocked / forked 不续；有挂起输入或新人类发言也不续',
+  ['completed', 'blocked', 'forked'].every((kind) => cont.shouldContinue(idle({ kind }), ON) === false) &&
+    cont.shouldContinue(idle({ inboxBusy: true }), ON) === false &&
+    cont.shouldContinue(idle({ freshHuman: true }), ON) === false,
+  '',
+)
+
+check(
+  'V-L3',
+  '外部取消全挡 —— 含 purge 因取错字段而漏掉的 parent / hook / disposed',
+  cont.EXTERNAL_CANCEL_CAUSES.every(
+    (cause) => cont.shouldContinue(idle({ kind: 'aborted', reason: { cause: { kind: cause } } }), ON) === false,
+  ) && cont.shouldContinue(idle({ cancelled: true }), ON) === false,
+  '',
+)
+
+check(
+  'V-L4',
+  '不可续表挡住终态码与 RATE_LIMIT；拿不到错误码时放行',
+  cont.shouldContinue(idle({ errorCode: 'AUTH' }), ON) === false &&
+    cont.shouldContinue(idle({ errorCode: 'RATE_LIMIT' }), ON) === false &&
+    cont.shouldContinue(idle({ errorCode: '' }), ON) === true &&
+    cont.NO_CONTINUE_CODES.includes('TRANSPORT'),
+  '',
+)
+
+check(
+  'V-L5',
+  '预算与去重：用满不续；同一 seq 不重复续',
+  cont.shouldContinue(idle({ used: 3 }), ON) === false &&
+    cont.shouldContinue(idle({ seq: 7, lastSeq: 7 }), ON) === false &&
+    cont.shouldContinue(idle({ seq: 8, lastSeq: 7 }), ON) === true,
+  '',
+)
+
 /* ------------------------------------------------------------------ 输出 */
 
 const passed = results.filter((r) => r.ok).length

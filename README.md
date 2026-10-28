@@ -77,6 +77,20 @@ scripts/verify.mjs      真宿主断言
 MODE.md                 架构设计与阶段计划
 ```
 
+## 当前能力模块
+
+| feature | 机制 |
+|---|---|
+| `persona` | 长人设，`section(complete)` 整套替换 |
+| `rules` | 硬规则，`context()`，complete 收尾也不丢 |
+| `middleware` | `system-prompt/assemble` 瀑布 + `data/mods/*.mjs` 热插拔 |
+| `capability-protocol` | 能力路由协议，`context()` |
+| `identity-strip` | 同名 scoped 覆盖 `harness:identity`（persona 设 complete 时是空操作） |
+| `bypass-approval` | `approval/request` 终端 answerer |
+| `hooks-bypass` | `tools/pre-execute` prepend 后反转终局判决 |
+| `request-retry` | `agent/request-error` 兜底重试，宿主放弃时才补 |
+| `auto-continue` | `agent/status` idle → 280ms → `followup`（**默认关**，有竞态） |
+
 ## 加一个能力
 
 1. `features/<id>/index.js` 导出 `{ name, inject, apply(ctx, config) }`。

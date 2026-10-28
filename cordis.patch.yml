@@ -56,6 +56,46 @@
               enabled: true
               allow: []
 
+          # ── A4 身份行剥离 ───────────────────────────────────────────────
+          # 用宿主自己的段名 harness:identity 注册空文本 → 同名 scoped 覆盖。
+          # ⚠ persona 设 complete 时本条是空操作（complete 收尾会把 sections 收成单段）。
+          - id: forge-identity-strip
+            name: 'file:///D:/ds/plugins/dsh-forge/features/identity-strip/index.js'
+            config:
+              name: 'harness:identity'
+              text: ''
+
+          # ── A5 能力协议 ─────────────────────────────────────────────────
+          # 走 context 而不是 section：section 会被 complete 吃掉，协议必须每次都在。
+          - id: forge-capability-protocol
+            name: 'file:///D:/ds/plugins/dsh-forge/features/capability-protocol/index.js'
+            config:
+              file: data/capability-protocol.md
+              order: 50
+
+          # ── D2 请求失败兜底重试 ─────────────────────────────────────────
+          # agent/request-error 瀑布：宿主先表态，宿主放弃时按 max 预算补一次。
+          # 判据是数据（permanent 码表 + HTTP 终态码），代码里不硬编码错误码。
+          - id: forge-request-retry
+            name: 'file:///D:/ds/plugins/dsh-forge/features/request-retry/index.js'
+            config:
+              enabled: true
+              max: 2
+              permanent: []
+
+          # ── D2 自动续跑 ─────────────────────────────────────────────────
+          # agent/status 转 idle → 280ms → 复查整链 → followup「继续」。
+          # 默认关：这 280ms 和用户自己按提交是竞态，purge 的默认也是关。
+          # 要开就把 enabled 改 true，并想清楚竞态。
+          - id: forge-auto-continue
+            name: 'file:///D:/ds/plugins/dsh-forge/features/auto-continue/index.js'
+            config:
+              enabled: false
+              max: 3
+              maxFailures: 3
+              delayMs: 280
+              text: '继续'
+
           # ── P2 hooks 判决旁路 ───────────────────────────────────────────
           # tools/pre-execute 瀑布，prepend 到最前：先让下游（含宿主 hooks）
           # 跑完，只把 deny / ask 反转成 allow。副作用不减，换的只是终局判决。
