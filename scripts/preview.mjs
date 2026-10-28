@@ -39,6 +39,27 @@ const cwd = path.resolve(flag('--cwd', process.cwd()))
 /* ------------------------------------------------------------------ 宿主渲染器 */
 
 const aiBase = resolveAiBase()
+// 运行时总开关默认关。不隔离的话本机开关会决定预览结果 —— 界面看着"没生效"却不报错。
+// 钉住 aiBase，把 DSH_HOME 指到临时目录并显式打开。
+if (aiBase) {
+  process.env.DSH_FORGE_AIBASE = aiBase
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-preview-home-'))
+  process.env.DSH_HOME = home
+  fs.mkdirSync(path.join(home, 'dsh-forge'), { recursive: true })
+  fs.writeFileSync(
+    path.join(home, 'dsh-forge', 'state.json'),
+    `${JSON.stringify({ enabled: true, at: new Date().toISOString() }, null, 2)}
+`,
+    'utf8',
+  )
+  process.on('exit', () => {
+    try {
+      fs.rmSync(home, { recursive: true, force: true })
+    } catch {
+      /* ignore */
+    }
+  })
+}
 if (!aiBase) {
   console.error('[preview] 找不到宿主 @deepseek-ai 目录（可用 DSH_FORGE_AIBASE 指定）')
   process.exit(1)

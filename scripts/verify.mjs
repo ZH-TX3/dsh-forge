@@ -42,6 +42,26 @@ if (!aiBase) {
   process.exit(1)
 }
 
+// 运行时总开关（$DSH_HOME/dsh-forge/state.json）默认关；不隔离的话
+// 这台机器上的真实开关会决定验证结果 —— 关了就是"什么都没发生"，而且不报错。
+// 所以钉住 aiBase，再把 DSH_HOME 指到临时目录并显式打开。
+process.env.DSH_FORGE_AIBASE = aiBase
+const verifyHome = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-verify-home-'))
+process.env.DSH_HOME = verifyHome
+fs.mkdirSync(path.join(verifyHome, 'dsh-forge'), { recursive: true })
+const STATE_FILE = path.join(verifyHome, 'dsh-forge', 'state.json')
+const setSwitch = (enabled) => fs.writeFileSync(STATE_FILE, `${JSON.stringify({ enabled, at: new Date().toISOString() }, null, 2)}
+`, 'utf8')
+setSwitch(true)
+const cleanup = () => {
+  try {
+    fs.rmSync(verifyHome, { recursive: true, force: true })
+  } catch {
+    /* 临时目录清不掉不影响结论 */
+  }
+}
+process.on('exit', cleanup)
+
 const url = (p) => pathToFileURL(path.join(aiBase, ...p.split('/'))).href
 const { Context } = await import(url('cordis/lib/index.js'))
 const { default: SystemPrompt } = await import(url('dsh-system-prompt/lib/index.js'))
@@ -301,6 +321,17 @@ const envChanged = Object.keys({ ...envBefore, ...envAfter }).filter((k) => envB
 
 check('V13', '宿主文件零改动', changed.length === 0, changed.length ? changed.slice(0, 5).join(', ') : '0 个文件变化')
 check('V14', '环境变量零改动', envChanged.length === 0, envChanged.length ? envChanged.join(', ') : '0 个变量变化')
+
+/* ------------------------------------------------------------------ 9.5 运行时开关 */
+
+{
+  setSwitch(false)
+  const ctx = await boot({})
+  const off = await ctx.systemPrompt.assemble({})
+  const injected = off.sections.some((s) => s.name === 'forge:prompt')
+  setSwitch(true)
+  check('V16', '运行时开关关闭后完全不介入', !injected, injected ? '★ 开关关了还在注入' : '已停用')
+}
 
 /* ------------------------------------------------------------------ 10. 负向对照 */
 

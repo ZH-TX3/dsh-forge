@@ -45,6 +45,11 @@ export function readState(dshHome, now = Date.now()) {
   const hit = cache.get(file)
   if (hit && now - hit.at < TTL_MS) return hit.value
 
+  // 文件不存在 = 用户还没表态 → 关（装上插件不等于立刻改行为）
+  // 文件损坏   = 无法确认用户意愿 → 也关（fail-closed）
+  //
+  // 这里刻意选 fail-closed：本插件改的是发给模型的东西，开关状态读不出来时
+  // 宁可"没生效"，也不能在一个用户以为已关闭的会话里悄悄开始注入。
   let value = { enabled: false, at: null, exists: false }
   try {
     const raw = JSON.parse(fs.readFileSync(file, 'utf8'))
@@ -54,7 +59,7 @@ export function readState(dshHome, now = Date.now()) {
       exists: true,
     }
   } catch {
-    /* 文件不存在或损坏 → 视为开，不让坏文件把功能锁死 */
+    /* 不存在或损坏 → 保持关闭 */
   }
   cache.set(file, { at: now, value })
   return value

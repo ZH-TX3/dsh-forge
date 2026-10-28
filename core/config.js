@@ -112,6 +112,9 @@ export function resolveConfig(raw = {}, env = process.env) {
             {
               enabled: bool(conf.enabled, fallback.enabled),
               ...(Number.isFinite(Number(conf.max)) ? { max: Number(conf.max) } : fallback.max !== undefined ? { max: fallback.max } : {}),
+              // delayMs / text 只对 continue-turn 有意义，但没必要为单项开特例
+              ...(Number.isFinite(Number(conf.delayMs)) ? { delayMs: Number(conf.delayMs) } : {}),
+              ...(typeof conf.text === 'string' && conf.text.trim() ? { text: conf.text.trim() } : {}),
             },
           ]
         }

@@ -73,15 +73,143 @@ export const EFFECTS = Object.freeze({
 
   'continue-turn': {
     default: false,
-    title: '异常结束自动续跑（未实现）',
+    title: '异常结束自动续跑',
     detail:
-      '宿主 agent/status 只 emit {status}，拿不到 agent 句柄，无法安全地补发 followup。' +
-      'purge 用 payload.agent，但在 0.2.0-rc.2 里该字段不存在。留占位，不猜 API。',
-    install() {
-      return { status: 'unsupported', detail: '需要宿主 emit 带 agent 句柄的事件' }
+      'agent/status 的 payload 由 dsh-agent 的 agentEvents() 融合了 { agent }（dsh-agent/lib/index.js:243 fused），' +
+      '所以拿得到 agent 句柄、可以补发 followup。只在上一轮以 error/aborted/interrupted/max-tokens 结束、' +
+      '且不是用户主动取消时触发，按 turn 计预算。',
+    install({ ctx, journal, options, isActive = () => true }) {
+      const max = Math.max(0, Math.min(10, Number(options?.max ?? 3)))
+      if (max === 0) return { status: 'off', detail: 'continueMax=0' }
+      const text = String(options?.text ?? '继续').trim() || '继续'
+      const delayMs = Math.max(0, Math.min(5000, Number(options?.delayMs ?? 280)))
+
+      const budget = new Map() // sessionId -> { seq, count }
+      const timers = new Set()
+
+      const maybeContinue = (agent) => {
+        if (!isActive()) return
+        if (typeof agent?.followup !== 'function') return
+        if (agent.status === 'running' || inboxBusy(agent)) return
+
+        const events = sessionEvents(agent)
+        const end = lastTurnEnd(events)
+        if (!end || shouldSkipContinue(end.data?.reason)) return
+        if (hasFreshHumanTurn(events, end)) return
+
+        const sid = String(agent?.session?.id ?? agent?.id ?? '')
+        const seq = Number(end.seq ?? 0)
+        const prev = budget.get(sid)
+        const count = prev && prev.seq === seq ? prev.count : 0
+        if (count >= max) return
+        budget.set(sid, { seq, count: count + 1 })
+        if (budget.size > 500) budget.clear()
+
+        try {
+          agent.followup(continueMessage(text))
+          journal?.record({ layer: 'E', id: 'continue-turn', op: 'continue', note: `#${count + 1}/${max}` })
+        } catch (error) {
+          budget.set(sid, { seq, count })
+          journal?.record({ layer: 'E', id: 'continue-turn', op: 'error', note: String(error?.message || error) })
+        }
+      }
+
+      const handler = (payload) => {
+        if (payload?.status !== 'idle' || !payload?.agent) return
+        const agent = payload.agent
+        // 留一拍：idle 与用户 submit 存在竞态，purge 同样用 280ms。
+        const timer = setTimeout(() => {
+          timers.delete(timer)
+          maybeContinue(agent)
+        }, delayMs)
+        timers.add(timer)
+      }
+
+      const dispose = ctx.on('agent/status', handler, { prepend: true })
+      journal?.record({ layer: 'E', id: 'continue-turn', op: 'install', note: `max=${max}` })
+      return {
+        status: 'installed',
+        disposers: [
+          dispose,
+          () => {
+            for (const timer of timers) clearTimeout(timer)
+            timers.clear()
+          },
+        ],
+      }
     },
   },
 })
+
+
+/* ------------------------------------------------------------------ continue-turn 判定 */
+
+/** 这些结束原因值得续跑；其它（normal / max-turns / 用户取消）一律不管。 */
+const ABNORMAL_REASONS = new Set(['error', 'aborted', 'interrupted', 'max-tokens'])
+
+/** 官方已经重试过、或新开一轮也解决不了的，不发"继续"。 */
+const NO_CONTINUE_CODES = new Set([...PERMANENT_CODES, 'RATE_LIMIT', 'TRANSPORT'])
+
+function sessionEvents(agent) {
+  const session = agent?.session
+  if (!session) return []
+  try {
+    if (typeof session.snapshotEvents === 'function') {
+      const got = session.snapshotEvents()
+      if (Array.isArray(got)) return got
+    }
+  } catch {
+    /* 读不到就用 events */
+  }
+  return Array.isArray(session.events) ? session.events : []
+}
+
+function lastTurnEnd(events) {
+  for (let i = events.length - 1; i >= 0; i -= 1) {
+    if (events[i]?.type === 'turn/end') return events[i]
+  }
+  return null
+}
+
+/** 该不该放弃这一轮。true = 别发"继续"。 */
+function shouldSkipContinue(reason) {
+  if (!reason || !ABNORMAL_REASONS.has(String(reason.kind))) return true
+  if (reason.kind === 'aborted' && (reason.reason === 'user' || reason.reason === 'cancel')) return true
+  const code = String(reason.code ?? reason.failure?.code ?? '').toUpperCase()
+  return code !== '' && NO_CONTINUE_CODES.has(code)
+}
+
+/** turn/end 之后有没有用户自己发言 —— 有就说明用户接上了，别再替他续。 */
+function hasFreshHumanTurn(events, end) {
+  const seq = Number(end?.seq ?? 0)
+  return events.some((event) => {
+    if ((event?.seq ?? 0) <= seq || event?.type !== 'user/message') return false
+    const kind = String(event?.data?.source?.kind ?? '')
+    return kind !== 'plugin' && kind !== 'dsh-forge' && kind !== 'dsh-purge'
+  })
+}
+
+function inboxBusy(agent) {
+  try {
+    const inbox = agent?.inbox
+    if (!inbox) return false
+    if (typeof inbox.hasPending === 'function') return Boolean(inbox.hasPending())
+    if (typeof inbox.size === 'number') return inbox.size > 0
+    if (typeof inbox.length === 'number') return inbox.length > 0
+  } catch {
+    /* inbox 形状变了就别拦 */
+  }
+  return false
+}
+
+function continueMessage(text) {
+  return {
+    id: `dsh-forge-continue-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    role: 'user',
+    content: [{ type: 'text', text }],
+    source: { kind: 'dsh-forge', form: 'notice', summary: 'continue' },
+  }
+}
 
 export const EFFECT_IDS = Object.freeze(Object.keys(EFFECTS))
 
