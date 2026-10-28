@@ -1,68 +1,37 @@
-# dsh-forge bundle patch
+# 锻造模式 —— 一个 agent 预设，不是一批全局补丁。
 #
-# 只做两件事：插入插件行 + 给默认 config。零源码补丁。
+# 这个文件只声明一件事：preset id = forge 时，挂哪些能力模块。
+# 加能力 = features/ 建目录 + 这里加一行。模式本身不做任何判断。
 #
-# 层开关（默认值来自 core/hooks.js 的 LAYERS.defaultOn）：
-#   L1  system prompt     开
-#   L1b runtime context   开   ← complete:true 预设下唯一稳的注入面
-#   L2  user message      关
-#   L3  assistant 历史    关   ← 改动历史会破坏前缀缓存
-#
-# L0 是「基座」不是层：宿主权限相关的一切都在 l0.capabilities 里，默认全关。
-# 每项能力都声明成本等级，成本越高闸越多：
-#   native        走官方扩展点，运行时即可开合
-#   env           进程环境变量，可还原
-#   filesystem    本机文件/计划任务，必须带 --destructive 且只能走 CLI
-#   source-patch  改宿主源码，必须同时开 l0.sourcePatch.enabled 且只能走 CLI
-#
-# 宿主运行时只自动应用 native / env 两类；filesystem 与 source-patch 永不自动执行。
-
+# 硬约束：本文件不出现任何宿主行（不 override、不 disable、不 insert 宿主插件）。
+# 宿主组合一行不改，是本设计的承诺，也是可断言的部分。
 - insert:
-    - id: dsh-forge
-      name: dsh-forge
+    - id: preset-forge
+      name: '@deepseek-ai/dsh-agent-preset'
       config:
-        enabled: true
-        verbose: false
+        id: forge
+        name: '锻造模式'
+        description: >-
+          人设与硬规则由你自己的文件驱动：长人设整套替换默认 prompt，硬规则走 contexts，
+          不会被 complete 收尾丢掉。旁路、中间件、工具箱按需挂在模式内，作用域限定，
+          不动宿主组合。
+        order: 30
+        plugins:
+          # ── L1 长人设 ────────────────────────────────────────────────────
+          # complete: true → 装配收尾把本段作为唯一 prompt section。
+          # 只在自身 scope 内成立（宿主 assemble 按 scope 派发），不外溢到别的模式。
+          - id: forge-persona
+            name: './features/persona/index.js'
+            config:
+              file: data/prompts/base.md
+              complete: true
+              order: 100
 
-        # 提示词来源：空 = 用插件自带 prompts/base.md
-        promptFile: ""
-        # 注入段在 sections 里的排序。官方 HARNESS_IDENTITY 是 -1000，故默认 -1001。
-        promptOrder: -1001
-        # 从 sections 里剔除的段名（数组）。留空数组 = 不改身份。
-        stripSections:
-          - harness:identity
-
-        # 额外中间件目录：空 = 插件自带 mods/。写成绝对路径可放自己的。
-        modsDir: ""
-
-        layers:
-          L1: true
-          L1b: true
-          L2: false
-          L3: false
-
-        l0:
-          # 只读嗅探宿主策略（sandbox mode / approval policy），结果喂给状态页
-          readOnly: true
-
-          # 源码补丁总闸。开着也不代表会自动打 —— 还要 CLI 显式执行。
-          sourcePatch:
-            enabled: false
-
-          # 统一能力开关。默认全关，按需要逐项打开。
-          # 每项的成本与还原方式见 `node scripts/forge.mjs cap list`。
-          capabilities:
-            auto-approve: false               # native  approval/request → allowed-once
-            scrub-permission-env: false        # env     清除 DSH_PERMISSION_MODE
-            remove-doctor-supervisor: false    # fs      移除 Doctor 守护脚本+计划任务（带备份）
-            suppress-host-crash: false         # patch   宿主退出静默（补丁待填）
-            escalation-ladder-bypass: false    # patch   escalation 加宽阶梯豁免
-
-        # 自更新：绑 GitHub 仓库。sha256 为空时只允许 check，apply 会被拒绝。
-        update:
-          repo: ZH-TX3/dsh-forge
-          ref: main
-          sha256: ""
-
-        # 单条中间件覆盖开关，例：{ "mod:my-rule": false }
-        middleware: {}
+          # ── L1b 硬规则 ───────────────────────────────────────────────────
+          # contexts 永远保留，即使上面 complete 收尾。这是 v1 最重要的发现，
+          # 在这里变成结构性保证，不再依赖任何兜底逻辑。
+          - id: forge-rules
+            name: './features/rules/index.js'
+            config:
+              dir: data/rules
+              order: 100
