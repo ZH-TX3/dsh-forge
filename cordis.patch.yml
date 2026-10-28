@@ -17,11 +17,15 @@
           不动宿主组合。
         order: 30
         plugins:
+          # 插件 spec 用 file:// 绝对路径：预设子行不走 Loader 的相对解析
+          # （相对路径的 baseUrl 是 profile 根，不是本目录，会 "never started"）。
+          # 换机器/移动目录后跑 `npm run verify`，V-C3 会立刻指出要改哪一行。
+
           # ── L1 长人设 ────────────────────────────────────────────────────
           # complete: true → 装配收尾把本段作为唯一 prompt section。
           # 只在自身 scope 内成立（宿主 assemble 按 scope 派发），不外溢到别的模式。
           - id: forge-persona
-            name: './features/persona/index.js'
+            name: 'file:///D:/ds/plugins/dsh-forge/features/persona/index.js'
             config:
               file: data/prompts/base.md
               complete: true
@@ -31,7 +35,7 @@
           # contexts 永远保留，即使上面 complete 收尾。这是 v1 最重要的发现，
           # 在这里变成结构性保证，不再依赖任何兜底逻辑。
           - id: forge-rules
-            name: './features/rules/index.js'
+            name: 'file:///D:/ds/plugins/dsh-forge/features/rules/index.js'
             config:
               dir: data/rules
               order: 100

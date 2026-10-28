@@ -230,6 +230,27 @@ check(
   `宿主行=${JSON.stringify(hostRows)} 顶层行=${JSON.stringify(topLevelRows)}`,
 )
 
+/* ------------------------------------------- V-C3 子行 spec 指向真文件 */
+
+// 预设子行不走 Loader 的相对解析，只能用 file:// 绝对路径。
+// 代价是路径写死在 patch 里：换目录、搬仓库会静默变成 "never started"。
+// 这条断言把它变成开机就报的硬错。
+const fileSpecs = [...patchText.matchAll(/name:\s*'(file:\/\/\/[^']+)'/g)].map((m) => m[1])
+const relSpecs = [...patchText.matchAll(/name:\s*'\.\/[^']*'/g)].map((m) => m[0])
+const specPaths = fileSpecs.map((spec) => fileURLToPath(spec))
+const rootLower = ROOT.toLowerCase()
+const inRoot = (p) => p.toLowerCase() === rootLower || p.toLowerCase().startsWith(rootLower + path.sep)
+const missing = specPaths.filter((p) => !fs.existsSync(p))
+const outside = specPaths.filter((p) => !inRoot(p))
+check(
+  'V-C3',
+  '子行 file:// spec 都指向本仓库内真实存在的文件（搬目录会立刻报错）',
+  fileSpecs.length > 0 && relSpecs.length === 0 && missing.length === 0 && outside.length === 0,
+  `spec=${fileSpecs.length} 相对=${JSON.stringify(relSpecs)} 缺失=${JSON.stringify(missing)} 越界=${JSON.stringify(outside)}`,
+)
+
+/* ------------------------------------------------ V-C2 用户配置零侵入 */
+
 const profilePatchCandidates = [
   path.join(process.env.DSH_HOME || '', 'profiles', process.env.DSH_PROFILE || '', 'cordis.patch.yml'),
   path.join(process.env.DSH_HOME || '', 'cordis.patch.yml'),
