@@ -259,11 +259,73 @@ export function apply(ctx, rawConfig = {}) {
   }
 
   installBackend(ctx, api)
+  installCommands(ctx, api, journal)
 
   if (config.verbose) {
     const state = LAYER_IDS.map((id) => `${id}:${layerOpen(config, id) ? 'on' : 'off'}`).join(' ')
     const capsText = capabilityResults.filter((c) => c.enabled).map((c) => `${c.id}:${c.status}`).join(',') || 'none'
     console.log(`[dsh-forge] ${state} on=${active()} mods=${modState.files.length} caps=${capsText}`)
+  }
+}
+
+/**
+ * `/forge` 命令 —— 悬浮层默认关，所以必须有一条不依赖 UI 的控制通道。
+ *
+ * 软取 commands 服务：headless / tui 没有也没关系，插件其余部分照常。
+ */
+function installCommands(ctx, api, journal) {
+  try {
+    ctx.inject(['commands'], (cctx) => {
+      const commands = cctx?.commands
+      if (!commands || typeof commands.register !== 'function') return
+
+      const handler = async (invocation) => {
+        const raw = String(invocation?.rawInput ?? '').trim()
+        const [a, b] = raw.split(/\s+/)
+        try {
+          if (!raw || a === 'status') {
+            const st = api.state()
+            return {
+              kind: 'success',
+              text: [
+                `dsh-forge`,
+                `  功能   ${st.enabled ? '开' : '关'}`,
+                `  悬浮层 ${st.ui ? '显示' : '隐藏'}`,
+                `  切换时间 ${st.at || '（默认值，从未切换过）'}`,
+                `  用法   /forge on | off | ui on | ui off | status`,
+              ].join('\n'),
+            }
+          }
+          if (a === 'on' || a === 'off') {
+            const next = api.setEnabled(a === 'on')
+            return { kind: 'success', text: `dsh-forge 功能 → ${next.enabled ? '开' : '关'}` }
+          }
+          if (a === 'ui' && (b === 'on' || b === 'off')) {
+            const next = api.setUiVisible(b === 'on')
+            return {
+              kind: 'success',
+              text: next.ui ? 'dsh-forge 悬浮层已显示（右下角）' : 'dsh-forge 悬浮层已隐藏',
+            }
+          }
+          return { kind: 'error', text: '用法：/forge on | off | ui on | ui off | status' }
+        } catch (error) {
+          return { kind: 'error', text: `dsh-forge: ${error?.message || error}` }
+        }
+      }
+
+      const dispose = commands.register({
+        name: 'forge',
+        description: 'dsh-forge 开关与状态：/forge on|off|ui on|ui off|status',
+        input: { hint: 'on | off | ui on | ui off | status' },
+        handler,
+      })
+      if (typeof cctx.effect === 'function' && typeof dispose === 'function') {
+        cctx.effect(() => dispose, 'dsh-forge: forge command')
+      }
+      journal.record({ layer: 'core', id: 'command', op: 'install', note: '/forge' })
+    })
+  } catch (error) {
+    journal.record({ layer: 'core', id: 'command', op: 'error', note: String(error?.message || error) })
   }
 }
 

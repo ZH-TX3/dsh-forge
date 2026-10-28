@@ -1,6 +1,6 @@
 {
   "name": "dsh-forge",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "type": "module",
   "description": "分层的提示词/上下文锻造插件：L1 system prompt · L1b runtime context · L2 user message · L3 历史 · L5 UI，中间件式扩展；L0 宿主能力表统一参数化，源码补丁走数据 + 六道闸。",

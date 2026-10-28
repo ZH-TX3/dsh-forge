@@ -106,8 +106,9 @@ test('悬浮层开关独立于功能开关', () => {
   const home = tmpHome()
   try {
     clearCache()
-    assert.equal(readState(home).ui, true, '默认显示')
+    assert.equal(readState(home).ui, false, '默认隐藏（插件装上不该自己冒出来）')
 
+    // 显式隐藏也不影响功能开关
     setUiVisible(home, false)
     const st = readState(home)
     assert.equal(st.ui, false)
@@ -118,7 +119,7 @@ test('悬浮层开关独立于功能开关', () => {
 
     setUiVisible(home, true)
     assert.equal(readState(home).ui, true)
-    assert.equal(readState(home).enabled, false)
+    assert.equal(readState(home).enabled, false, '显示 UI 不应打开功能')
   } finally {
     fs.rmSync(home, { recursive: true, force: true })
   }
@@ -187,6 +188,74 @@ function makeCtx() {
     },
   }
 }
+
+test('/forge 命令：默认悬浮层关，能开关两项', async () => {
+  const home = tmpHome()
+  const prev = process.env.DSH_HOME
+  process.env.DSH_HOME = home
+  clearCache()
+  try {
+    let registered = null
+    const ctx = {
+      on: () => () => {},
+      effect(fn) {
+        if (typeof fn === 'function') fn()
+      },
+      provide() {},
+      get() {
+        return undefined
+      },
+      inject(deps, cb) {
+        if (Array.isArray(deps) && deps.includes('commands')) {
+          cb({
+            commands: {
+              register(spec) {
+                registered = spec
+                return () => {}
+              },
+            },
+            effect() {},
+          })
+        }
+      },
+    }
+    apply(ctx, {})
+
+    assert.ok(registered, '/forge 命令没注册')
+    assert.equal(registered.name, 'forge')
+    assert.equal(typeof registered.handler, 'function')
+
+    // 默认状态：功能开、悬浮层关
+    const status = await registered.handler({ rawInput: 'status' })
+    assert.equal(status.kind, 'success')
+    assert.match(status.text, /功能\s+开/)
+    assert.match(status.text, /悬浮层\s+隐藏/)
+
+    // 打开悬浮层
+    const onUi = await registered.handler({ rawInput: 'ui on' })
+    assert.equal(onUi.kind, 'success')
+    assert.equal(readState(home).ui, true)
+
+    // 关掉功能，但 UI 保持
+    const off = await registered.handler({ rawInput: 'off' })
+    assert.equal(off.kind, 'success')
+    assert.equal(readState(home).enabled, false)
+    assert.equal(readState(home).ui, true)
+
+    // 无参数 = status
+    const bare = await registered.handler({ rawInput: '' })
+    assert.equal(bare.kind, 'success')
+
+    // 乱输 → 明确报错而不是静默
+    const bad = await registered.handler({ rawInput: 'nonsense' })
+    assert.equal(bad.kind, 'error')
+  } finally {
+    if (prev === undefined) delete process.env.DSH_HOME
+    else process.env.DSH_HOME = prev
+    clearCache()
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
 
 test('端到端：api 关掉开关后，assemble 钩子不再改写', async () => {
   const home = tmpHome()

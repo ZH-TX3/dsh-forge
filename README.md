@@ -130,6 +130,8 @@ POST /dsh-forge/api?op=toggle     # 或 enable / disable
 **浮动层，`position:fixed` 右下角，完全脱离文档流** —— 不占位、不影响输入框高度、
 不参与 `composerStack` 的 flex 布局。面板从 chip 向上展开，宽 300px。
 
+**默认不显示。** 装上插件不等于要在屏幕上挂个东西 —— 悬浮层要显式打开，`/forge ui on`。
+
 两个开关，职责分开：
 
 | 开关 | 作用 | 落盘 |
@@ -137,12 +139,23 @@ POST /dsh-forge/api?op=toggle     # 或 enable / disable
 | 面板右上角 `开 / 关` | **功能**是否生效（四层 + 能力 + 效果） | `state.json` 的 `enabled` |
 | 面板右上角 `×` | 悬浮层**显示**是否显示（功能照常） | `state.json` 的 `ui` |
 
+两条控制通道 —— 会话里用命令，终端里用 CLI：
+
 ```
-node scripts/forge.mjs switch status | on | off     # 功能开关
-node scripts/forge.mjs ui     status | on | off     # 悬浮层显示
+/forge                 # 状态
+/forge on | off        # 功能开关
+/forge ui on | off     # 悬浮层显示（默认 off）
 ```
 
-藏起来找不回时：`node scripts/forge.mjs ui on`，或删掉 `$DSH_HOME/dsh-forge/state.json`。
+```
+node scripts/forge.mjs switch status | on | off
+node scripts/forge.mjs ui     status | on | off
+```
+
+`/forge` 命令是软注册的：headless / tui 没有 commands 服务也不影响插件其余部分。
+
+藏起来找不回时：`/forge ui on`、`node scripts/forge.mjs ui on`，或删掉
+`$DSH_HOME/dsh-forge/state.json`（删了回到默认：功能开、悬浮层关）。
 
 ## 看效果：preview
 

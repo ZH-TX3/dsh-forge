@@ -30,7 +30,9 @@ function realHome(dshHome) {
 }
 
 /**
- * 读开关状态。文件不存在 = 开（默认可用）。
+ * 读开关状态。
+ *   · enabled 默认开（装上就工作）
+ *   · ui 默认关（悬浮层不自己冒出来，要显式打开）
  * @returns {{enabled:boolean, ui:boolean, at:string|null, exists:boolean}}
  */
 export function readState(dshHome, now = Date.now()) {
@@ -39,12 +41,13 @@ export function readState(dshHome, now = Date.now()) {
   const hit = cache.get(file)
   if (hit && now - hit.at < TTL_MS) return hit.value
 
-  let value = { enabled: true, ui: true, at: null, exists: false }
+  // ui 默认 **关**：插件装上不等于要在屏幕上挂个东西，要用再开。
+  let value = { enabled: true, ui: false, at: null, exists: false }
   try {
     const raw = JSON.parse(fs.readFileSync(file, 'utf8'))
     value = {
       enabled: raw?.enabled !== false,
-      ui: raw?.ui !== false,
+      ui: raw?.ui === true,
       at: typeof raw?.at === 'string' ? raw.at : null,
       exists: true,
     }
