@@ -6,6 +6,14 @@
 > 本插件是 `dsh-purge` 的重写：目标一致（在宿主侧把提示词/上下文按自己的意图装配），
 > 手段完全不同。架构与决策记录见 [`ARCHITECTURE.md`](./ARCHITECTURE.md)。
 
+| 项 | 值 |
+|---|---|
+| 宿主 | DSH `0.2.0-rc.2` |
+| 状态 | v0.1.0 · 144 个测试 · 17 项真宿主断言全绿 |
+| 仓库 | <https://github.com/ZH-TX3/dsh-forge>（private） |
+| 规模 | 实现 4379 行 / 测试 2128 行 |
+| 默认 | **总开关关**，装上不改变任何行为 |
+
 ---
 
 ## 四层
@@ -140,7 +148,7 @@ node scripts/forge.mjs advice
 
 开关拨动**不需要重启**，也不用刷新页面 —— 钩子始终接线，只是被 `isActive()` 挡住。
 
-## 看效果：preview
+## 看效果：preview / verify
 
 ```
 node scripts/preview.mjs                     # 走真实管线，用宿主自己的 renderPrompt 渲染
@@ -151,6 +159,20 @@ node scripts/preview.mjs --layer L2=on --layer L3=on
 
 它不模拟渲染器 —— 直接 import 宿主的 `renderPrompt` / `renderContextSections`，
 所以看到的拼接结果和宿主发给模型的一模一样。
+
+```
+node scripts/verify.mjs          # 17 条断言 + 指标
+node scripts/verify.mjs --json   # 机器可读
+```
+
+`verify` 更进一步：import 宿主**真**的 `cordis` 与 `dsh-system-prompt`，调宿主自己的
+`assemble()`，断言 V1–V16（含 `complete:true` 下 L1b 存活、20 轮零漂移、
+10096 个宿主文件 sha256 零改动、总开关关掉完全不介入、以及一条负向对照证明断言会失败）。
+
+两个脚本都会把 `DSH_HOME` 隔离到临时目录并显式打开总开关 ——
+否则本机开关是关时，它们会静默测出「什么都没发生」。
+
+详见 [`VERIFY.md`](./VERIFY.md)。
 
 ## 扩展的三档
 
@@ -307,20 +329,44 @@ node scripts/forge.mjs update pin
 ```
 node scripts/forge.mjs session list
 node scripts/forge.mjs session stat <file>
+node scripts/forge.mjs session inspect <file> --grep YG
 node scripts/forge.mjs session redact <file> --pattern 'hunter\d' --apply
 node scripts/forge.mjs session restore <file>
 ```
+
+`inspect` 是为「插件关了，为什么这条会话里还有 X」这类问题准备的：
+
+```
+system/message 里有     = 提示词被注入过（插件留的）
+只有 assistant/tool 里有 = 只是历史里提到过，跟注入无关
+```
+
+**注意宿主行为**：system prompt 变了就会 append 一条 `system/message` 事件进会话历史。
+之后这个会话每次发给模型，那条历史都在。**插件关掉只停未来的注入，撤不回已经写进去的历史**，
+只有新 session id 才重新装配。
 
 注意：DSH 的会话文件是**多帧 zstd 拼接**的（追加写），而 Node 的 zstd 解码**只解第一帧**
 且不报错。本工具的读路径按帧头逐帧解压、任一帧失败即中止（不退化成静默截断），
 写路径输出单帧。这类地方一旦按"能跑就行"写，就是悄悄毁会话。
 每次写盘强制：结构复核 → 备份 → 写 → 回读验证（行数 / type 字段），失败自动回滚。
 
+## 已知限制
+
+| 限制 | 说明 |
+|---|---|
+| **minimal 预设下 L1 不生效** | 宿主 `complete:true` 独占 sections，长人设被丢，只剩 L1b 的短规则。这是「跟宿主共处」换来的确定性；要连这块也堵上，得把全文搬进 L1b（可做，未做） |
+| **自更新需 pinned sha256** | `update.sha256` 为空时只允许 `check`，`apply` 直接拒绝 |
+| **私有仓库必须带 token** | GitHub 对无凭据访问私有仓库返回 **404 而不是 403**，很容易误判成"仓库不存在"。token 优先级：`update.token` > `GITHUB_TOKEN` > `GH_TOKEN` > 本机 `gh auth token` |
+| **L4 只做离线** | 运行时改落盘历史必然污染上下文、破坏前缀缓存、不可回滚 |
+| **L6 权重层未实现** | 真要接，形态是适配器调外部 abliteration 工具 + 校验产物 |
+| **总开关 fail-closed** | `state.json` 不存在或损坏都视为关。改的是发给模型的东西，开关读不出来时宁可没生效 |
+
 ## 开发
 
 ```bash
 node --check index.js backend.js
-node --test tests/*.test.js      # 140 个断言
+node --test tests/*.test.js      # 144 个断言
+npm run verify                   # 上面 + 17 项真宿主断言
 ```
 
 `tests/extensibility.test.js` 证明「加层是数据变更」：用自定义 `LAYERS` 表（多出 `L4`/`L5`）
