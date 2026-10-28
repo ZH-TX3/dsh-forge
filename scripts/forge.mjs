@@ -352,6 +352,45 @@ function sessionCmd(sub, file) {
   if (!file) throw new Error('需要会话文件路径')
   const target = path.resolve(file)
 
+  if (sub === 'inspect') {
+    const { events } = readSession(target)
+    const head = events.find((e) => e?.type === 'session') || {}
+    const stat = statSession(target)
+    const re = flagValue('--grep') ? new RegExp(flagValue('--grep'), 'g') : null
+    const show = Math.max(1, Number(flagValue('--n', '3')) || 3)
+
+    console.log(`会话   ${path.basename(path.dirname(target))}`)
+    console.log(`cwd    ${head.cwd ?? '(未知)'}`)
+    console.log(`创建     ${head.createdAt ? new Date(head.createdAt).toISOString() : '(未知)'}`)
+    console.log(`来源     ${head.origin ?? 'main'}${head.parentSession ? `  parent=${head.parentSession}` : ''}`)
+    console.log(`规模     ${stat.events} events / ${stat.frames} 帧 / ${stat.plainBytes} bytes`)
+
+    const sys = events.filter((e) => e?.type === 'system/message')
+    console.log(`
+system/message ${sys.length} 条`)
+    if (re) {
+      const hitSys = sys.filter((e) => re.test(JSON.stringify(e)) && (re.lastIndex = 0) === 0)
+      console.log(`  命中 ${flagValue('--grep')}: ${hitSys.length}`)
+      for (const e of hitSys.slice(0, show)) {
+        const str = JSON.stringify(e)
+        const i = str.search(new RegExp(flagValue('--grep')))
+        console.log(`  · ${str.slice(Math.max(0, i - 60), i + 90).replace(/\n/g, ' ')}`)
+      }
+
+      const byType = {}
+      for (const ev of events) {
+        const str = JSON.stringify(ev)
+        if (!re.test(str)) continue
+        re.lastIndex = 0
+        byType[ev?.type ?? '(none)'] = (byType[ev?.type ?? '(none)'] ?? 0) + 1
+      }
+      console.log(`
+全事件命中分布: ${JSON.stringify(byType)}`)
+      console.log('system/message 里有 = 提示词被注入过；只有 assistant/tool 里有 = 只是历史里提到过')
+    }
+    return
+  }
+
   if (sub === 'stat') {
     const stat = statSession(target)
     console.log(JSON.stringify(stat, null, 2))
@@ -373,7 +412,7 @@ function sessionCmd(sub, file) {
     return
   }
 
-  throw new Error('session 子命令：list | stat | redact | restore')
+  throw new Error('session 子命令：list | inspect | stat | redact | restore')
 }
 
 /* ------------------------------------------------------------------ main */
@@ -393,7 +432,7 @@ async function main() {
   preview [--preset minimal] [--cwd DIR]
   patch list | preview <id> | apply <id> | revert <id>
   update check | pin | apply [--dry-run]
-  session list | stat <file> | redact <file> --pattern <re> [--apply] | restore <file>
+  session list | inspect <file> [--grep <re>] | stat <file> | redact <file> --pattern <re> [--apply] | restore <file>
 
   preview 走 scripts/preview.mjs（单独文件，见那里的 --help）
 
