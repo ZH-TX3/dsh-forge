@@ -56,15 +56,38 @@ window.__ModuleLoader__.load({
         background: "var(--dsh-surface, transparent)",
       },
       // 容器也卡住宽度，避免外层块级元素把面板和 chip 拉到两端。
-      // composerStack 是 flex-direction:column，而本插槽在输入框之前；
-      // 宿主没有「输入框下方」的插槽，所以用 order 把它排到最后（= 输入框下方）。
-      shell: {
-        maxWidth: PANEL_WIDTH,
+      /**
+       * 浮动层：position:fixed 彻底脱离文档流。
+       *
+       * 之前的 order:1 仍然占位 —— 会改变 composerStack 的高度、把输入框顶上去。
+       * 固定定位之后既不占位、也不受父级 flex 影响，面板向上展开。
+       */
+      overlay: {
+        position: "fixed",
+        right: 16,
+        bottom: 16,
+        zIndex: 40,
         display: "flex",
         flexDirection: "column",
-        alignItems: "flex-start",
-        order: 1,
-        marginTop: 4,
+        alignItems: "flex-end",
+        gap: 8,
+        maxWidth: PANEL_WIDTH,
+        margin: 0,
+        padding: 0,
+      },
+      /* 浮动时面板本身不再需要 100% 宽，跟着内容走。 */
+      panelFloat: {
+        width: PANEL_WIDTH,
+        maxWidth: "calc(100vw - 32px)",
+        boxSizing: "border-box",
+        overflow: "hidden",
+        border: "1px solid var(--dsh-border, rgba(127,127,127,.28))",
+        borderRadius: 10,
+        padding: 10,
+        fontSize: 12,
+        lineHeight: 1.6,
+        background: "var(--dsh-surface, canvas)",
+        boxShadow: "0 8px 28px rgba(0,0,0,.18)",
       },
       grow: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
       row: { display: "flex", justifyContent: "space-between", gap: 8, minWidth: 0 },
@@ -123,8 +146,8 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function Panel({ state, journal, onReload, onToggle, busy }) {
-      if (!state) return h("div", { style: styles.panel }, "dsh-forge: 读取状态中…")
+    function Panel({ state, journal, onReload, onToggle, onHide, busy }) {
+      if (!state) return h("div", { style: styles.panelFloat }, "dsh-forge: 读取状态中…")
       const on = state.enabled !== false
       // 层清单由后端提供（state.layerMeta），UI 不硬编码层名 —— 加层时前端不用改。
       const layers = Array.isArray(state.layerMeta)
@@ -132,7 +155,7 @@ window.__ModuleLoader__.load({
         : Object.keys(state.layers || {}).map((id) => [id, ""])
       return h(
         "div",
-        { style: styles.panel },
+        { style: styles.panelFloat },
         h(
           "div",
           { style: styles.row },
@@ -152,6 +175,17 @@ window.__ModuleLoader__.load({
             "span",
             { style: { ...styles.dim, ...styles.grow, flex: "1 1 auto", textAlign: "right" } },
             `${state.prompt.bytes}B · ${state.context.bytes}B · ${(state.mods.files || []).length} mods`,
+          ),
+          h(
+            "button",
+            {
+              type: "button",
+              style: { ...styles.dim, background: "transparent", border: "none", cursor: "pointer", padding: "0 2px", font: "inherit", flex: "0 0 auto" },
+              onClick: onHide,
+              title: "隐藏悬浮层（功能不受影响；用 node scripts/forge.mjs ui on 恢复）",
+              "aria-label": "隐藏悬浮层",
+            },
+            "×",
           ),
         ),
         on
@@ -265,6 +299,15 @@ window.__ModuleLoader__.load({
         }
       }, [refresh])
 
+      const onHide = useCallback(async () => {
+        try {
+          await api("ui", { method: "POST", qs: "on=0" })
+          await refresh()
+        } catch (err) {
+          setError(String(err && err.message ? err.message : err))
+        }
+      }, [refresh])
+
       const onToggle = useCallback(async () => {
         setBusy(true)
         try {
@@ -296,9 +339,12 @@ window.__ModuleLoader__.load({
             .join(" ")
         : ""
 
+      // 悬浮层被显式隐藏：什么都不渲染（功能层照常工作）。
+      if (state && state.ui === false) return null
+
       return h(
         "div",
-        { style: styles.shell },
+        { style: styles.overlay },
         open ? h(Panel, { state, journal, onReload, busy }) : null,
         h(
           "button",

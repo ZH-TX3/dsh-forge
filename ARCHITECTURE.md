@@ -243,7 +243,7 @@ index.js
 | L2 | `pre-step` 的 `messages` | 新 messages | 是（按规则 id 标记） | 上游 reject 先于我们 | 卸插件即恢复 |
 | L3 | `deriveMessages()` 返回值 | 新数组 | 是 | Message 深冻结，只能替换不能改 | 卸插件即恢复 |
 | L4 | 磁盘 `.jsonl.zstd` | 改写后的文件 | 需显式 | 压缩格式变更 / 会话正在跑 | ⚠️ 需自带 .bak |
-| L5 | `/api/state` | DOM | — | 插槽改名 | 卸插件即恢复 |
+| L5 | `/api/state` | 浮动层 DOM（`position:fixed`，不占位） | — | 插槽改名 | 卸插件即恢复 |
 
 **硬约束**：
 1. 任何层都**不得**写宿主 `@deepseek-ai/*` 目录。违反即视为架构事故。

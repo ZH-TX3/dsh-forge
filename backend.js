@@ -12,6 +12,7 @@
  *   POST /dsh-forge/api?op=enable           打开总开关
  *   POST /dsh-forge/api?op=disable          关闭总开关
  *   POST /dsh-forge/api?op=toggle           翻转总开关
+ *   POST /dsh-forge/api?op=ui&on=1|0        悬浮层显示/隐藏（功能不受影响）
  *
  * 只接受回环来源。webServer 一般只绑 127.0.0.1，这里再加一道。
  */
@@ -63,6 +64,12 @@ export function installBackend(ctx, forge) {
           if (op === 'clear') {
             forge.journal.clear()
             return send(res, 200, { ok: true })
+          }
+
+          if (op === 'ui') {
+            const on = url.searchParams.get('on')
+            const state = forge.setUiVisible(on === '1' || on === 'true' || on === '')
+            return send(res, 200, { ok: true, ui: state.ui !== false })
           }
 
           if (op === 'enable' || op === 'disable' || op === 'toggle') {

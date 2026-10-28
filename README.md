@@ -125,11 +125,24 @@ POST /dsh-forge/api?op=toggle     # 或 enable / disable
 
 为什么不做成纯 UI 开关：只隐藏面板没有意义。用户以为关了、提示词还在注入，是更坏的结果。
 
-## 位置
+## 位置与显示
 
-面板挂在 `conversation.input.dock`，但宿主的 `composerStack` 是 `flex-direction:column`
-且该插槽排在输入框**之前**。宿主没有「输入框下方」的插槽，所以用 `order:1`
-把它排到最后 —— 视觉上就是输入框下面，宽度 300px。不改宿主任何代码。
+**浮动层，`position:fixed` 右下角，完全脱离文档流** —— 不占位、不影响输入框高度、
+不参与 `composerStack` 的 flex 布局。面板从 chip 向上展开，宽 300px。
+
+两个开关，职责分开：
+
+| 开关 | 作用 | 落盘 |
+|---|---|---|
+| 面板右上角 `开 / 关` | **功能**是否生效（四层 + 能力 + 效果） | `state.json` 的 `enabled` |
+| 面板右上角 `×` | 悬浮层**显示**是否显示（功能照常） | `state.json` 的 `ui` |
+
+```
+node scripts/forge.mjs switch status | on | off     # 功能开关
+node scripts/forge.mjs ui     status | on | off     # 悬浮层显示
+```
+
+藏起来找不回时：`node scripts/forge.mjs ui on`，或删掉 `$DSH_HOME/dsh-forge/state.json`。
 
 ## 看效果：preview
 
@@ -311,7 +324,7 @@ node scripts/forge.mjs session restore <file>
 
 ```bash
 node --check index.js backend.js
-node --test tests/*.test.js      # 137 个断言
+node --test tests/*.test.js      # 140 个断言
 ```
 
 `tests/extensibility.test.js` 证明「加层是数据变更」：用自定义 `LAYERS` 表（多出 `L4`/`L5`）

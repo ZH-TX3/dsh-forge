@@ -26,7 +26,7 @@ import { builtinMiddlewares, CONTEXT_SECTION, PROMPT_SECTION } from './layers/bu
 import { describeCapabilities, installCapabilities } from './core/capabilities.js'
 import { describeEffects, installEffects } from './core/effects.js'
 import { adviceReport } from './core/advice.js'
-import { isEnabled as stateEnabled, readState, writeState } from './core/state.js'
+import { isEnabled as stateEnabled, readState, setUiVisible, writeState } from './core/state.js'
 import { activeRule, listRules, setActiveRule } from './core/source.js'
 import { PATCHES, isDefined } from './patches/catalog.js'
 import * as hostPolicy from './core/host.js'
@@ -147,6 +147,11 @@ export function apply(ctx, rawConfig = {}) {
       journal.record({ layer: 'core', id: 'switch', op: next.enabled ? 'enable' : 'disable' })
       return next
     },
+    setUiVisible(visible) {
+      const next = setUiVisible(config.dshHome, visible)
+      journal.record({ layer: 'core', id: 'switch', op: visible ? 'ui-on' : 'ui-off' })
+      return next
+    },
     isActive: active,
     useRule(id) {
       const ok = setActiveRule(config.dshHome, id)
@@ -173,6 +178,7 @@ export function apply(ctx, rawConfig = {}) {
       return {
         enabled: config.enabled !== false && st.enabled !== false,
         configEnabled: config.enabled !== false,
+        ui: st.ui !== false,
         switchAt: st.at,
         verbose: config.verbose,
         layers: Object.fromEntries(LAYER_IDS.map((id) => [id, layerOpen(config, id)])),

@@ -11,7 +11,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { clearCache, isEnabled, readState, setEnabled, statePath, writeState } from '../core/state.js'
+import { clearCache, isEnabled, readState, setEnabled, setUiVisible, statePath, writeState } from '../core/state.js'
 import { resolveConfig } from '../core/config.js'
 import { Journal } from '../core/journal.js'
 import { Pipeline } from '../core/pipeline.js'
@@ -97,6 +97,28 @@ test('writeState 支持只改一处，不清掉其它字段', () => {
     writeState(home, { enabled: false })
     writeState(home, {})
     assert.equal(readState(home).enabled, false, '空 patch 不应把开关重置成开')
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
+test('悬浮层开关独立于功能开关', () => {
+  const home = tmpHome()
+  try {
+    clearCache()
+    assert.equal(readState(home).ui, true, '默认显示')
+
+    setUiVisible(home, false)
+    const st = readState(home)
+    assert.equal(st.ui, false)
+    assert.equal(st.enabled, true, '隐藏 UI 不应改变功能开关')
+
+    setEnabled(home, false)
+    assert.equal(readState(home).ui, false, '关功能不应改变 UI 开关')
+
+    setUiVisible(home, true)
+    assert.equal(readState(home).ui, true)
+    assert.equal(readState(home).enabled, false)
   } finally {
     fs.rmSync(home, { recursive: true, force: true })
   }

@@ -31,7 +31,7 @@ function realHome(dshHome) {
 
 /**
  * 读开关状态。文件不存在 = 开（默认可用）。
- * @returns {{enabled:boolean, at:string|null, exists:boolean}}
+ * @returns {{enabled:boolean, ui:boolean, at:string|null, exists:boolean}}
  */
 export function readState(dshHome, now = Date.now()) {
   const home = realHome(dshHome)
@@ -39,11 +39,12 @@ export function readState(dshHome, now = Date.now()) {
   const hit = cache.get(file)
   if (hit && now - hit.at < TTL_MS) return hit.value
 
-  let value = { enabled: true, at: null, exists: false }
+  let value = { enabled: true, ui: true, at: null, exists: false }
   try {
     const raw = JSON.parse(fs.readFileSync(file, 'utf8'))
     value = {
       enabled: raw?.enabled !== false,
+      ui: raw?.ui !== false,
       at: typeof raw?.at === 'string' ? raw.at : null,
       exists: true,
     }
@@ -61,6 +62,7 @@ export function writeState(dshHome, patch = {}) {
   const current = readState(home)
   const next = {
     enabled: typeof patch.enabled === 'boolean' ? patch.enabled : current.enabled,
+    ui: typeof patch.ui === 'boolean' ? patch.ui : current.ui,
     at: new Date().toISOString(),
   }
   fs.mkdirSync(path.dirname(file), { recursive: true })
@@ -73,6 +75,11 @@ export function writeState(dshHome, patch = {}) {
 
 export function setEnabled(dshHome, enabled) {
   return writeState(dshHome, { enabled: !!enabled })
+}
+
+/** 悬浮层显示开关（与功能开关独立：UI 可以藏起来，功能照常）。 */
+export function setUiVisible(dshHome, visible) {
+  return writeState(dshHome, { ui: !!visible })
 }
 
 /**

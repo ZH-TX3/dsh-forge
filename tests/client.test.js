@@ -122,6 +122,7 @@ function textOf(node) {
 
 const STATE = {
   enabled: true,
+  ui: true,
   layers: { L1: true, L1b: true, L2: false, L3: false },
   layerMeta: [
     { id: 'L1', title: 'system prompt' },
@@ -195,6 +196,26 @@ test('state 为 null 时显示「读取状态中」而不是崩', () => {
   const { mod, react } = loadClient({ ForgeDock: [true, null, null] })
   const text = textOf(react.__render(pickComponent(mod)))
   assert.match(text, /读取状态中/)
+})
+
+test('浮动层：position:fixed，脱离文档流', () => {
+  const { mod, react } = loadClient({ ForgeDock: [false, STATE, null] })
+  const nodes = walk(react.__render(pickComponent(mod)))
+  const fixed = nodes.filter((n) => n.props?.style?.position === "fixed")
+  assert.equal(fixed.length, 1, '应该恰好有一个固定定位的容器')
+  const style = fixed[0].props.style
+  assert.equal(style.right, 16)
+  assert.equal(style.bottom, 16)
+  assert.equal(style.position, "fixed")
+  // 不能再依赖 order 挤在流里
+  assert.equal(style.order, undefined)
+})
+
+test('state.ui === false 时什么都不渲染（功能层不受影响）', () => {
+  const hidden = { ...STATE, ui: false }
+  const { mod, react } = loadClient({ ForgeDock: [false, hidden, null] })
+  const tree = react.__render(pickComponent(mod))
+  assert.equal(tree, null)
 })
 
 test('mods 有错误时把文件名显示出来', () => {
