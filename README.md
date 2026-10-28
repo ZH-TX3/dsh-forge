@@ -113,49 +113,32 @@ node scripts/forge.mjs advice
 覆盖：沙箱模式、审批策略、读文件上限（`dsh-tool-fs.readLimit/readMaxBytes`）、
 子代理深度（`dsh-tool-subagent.maxDepth`）、持久 shell 超时（在预设 YAML 里）。
 
-## 总开关（运行时）
+## 开关（输入框那一行）
 
-面板右上角的 `开 / 关` 才是真开关：关掉之后**四层改写、能力、效果全部停用**，
-配置不动，打开即恢复，不需要重启。
+界面上只有一样东西：输入框底部那一行（`.uV2eYG_row`）里，紧挨 `+` 和权限下拉之后，
+一个 **iOS 风格的开关**。轨道 32×18、圆角 9、iOS 绿 `#34c759`，关闭是系统 32% 灰。
 
-```
-状态落在 $DSH_HOME/dsh-forge/state.json（与 cordis 配置分开）
-POST /dsh-forge/api?op=toggle     # 或 enable / disable
-```
+| 状态 | 含义 |
+|---|---|
+| 关（灰） | 四层改写、能力、效果**全部不生效**（默认） |
+| 开（绿） | 全部生效 |
 
-为什么不做成纯 UI 开关：只隐藏面板没有意义。用户以为关了、提示词还在注入，是更坏的结果。
+**默认关。** 装上插件不等于立刻改行为 —— 要拨一下。
 
-## 位置与显示
+它在 `conversation.input.left` 插槽里（`kind:"list"`，`scope:"session"`），
+渲染位置正好是 `.row` 内 `.modes`（权限下拉）之后、`.trailing` 之前。
 
-**浮动层，`position:fixed` 右下角，完全脱离文档流** —— 不占位、不影响输入框高度、
-不参与 `composerStack` 的 flex 布局。面板从 chip 向上展开，宽 300px。
+状态落 `$DSH_HOME/dsh-forge/state.json`，与 cordis 配置分开：
 
-**默认不显示。** 装上插件不等于要在屏幕上挂个东西 —— 悬浮层要显式打开，`/forge ui on`。
-
-两个开关，职责分开：
-
-| 开关 | 作用 | 落盘 |
-|---|---|---|
-| 面板右上角 `开 / 关` | **功能**是否生效（四层 + 能力 + 效果） | `state.json` 的 `enabled` |
-| 面板右上角 `×` | 悬浮层**显示**是否显示（功能照常） | `state.json` 的 `ui` |
-
-两条控制通道 —— 会话里用命令，终端里用 CLI：
-
-```
-/forge                 # 状态
-/forge on | off        # 功能开关
-/forge ui on | off     # 悬浮层显示（默认 off）
+```json
+{ "enabled": true }
 ```
 
-```
-node scripts/forge.mjs switch status | on | off
-node scripts/forge.mjs ui     status | on | off
-```
+- 开关：`POST /dsh-forge/api?op=toggle`
+- 终端等价操作：`node scripts/forge.mjs switch on | off | status`
+- 想彻底重置：删掉 `$DSH_HOME/dsh-forge/state.json`（回到默认关）
 
-`/forge` 命令是软注册的：headless / tui 没有 commands 服务也不影响插件其余部分。
-
-藏起来找不回时：`/forge ui on`、`node scripts/forge.mjs ui on`，或删掉
-`$DSH_HOME/dsh-forge/state.json`（删了回到默认：功能开、悬浮层关）。
+开关拨动**不需要重启**，也不用刷新页面 —— 钩子始终接线，只是被 `isActive()` 挡住。
 
 ## 看效果：preview
 

@@ -32,7 +32,7 @@ import { resolveConfig } from '../core/config.js'
 import { adviceReport } from '../core/advice.js'
 import { describeEffects } from '../core/effects.js'
 import { activeRule, listRules, resolvePrompt, rulesDir, setActiveRule } from '../core/source.js'
-import { readState, setEnabled, setUiVisible } from '../core/state.js'
+import { readState, setEnabled } from '../core/state.js'
 import { Journal } from '../core/journal.js'
 import {
   CAPABILITIES,
@@ -147,7 +147,6 @@ function switchCmd(config, sub) {
 
   if (!sub || sub === 'status') {
     console.log(`总开关   ${cur.enabled ? '开' : '关'}`)
-    console.log(`悬浮层   ${cur.ui ? '显示' : '隐藏'}`)
     console.log(`记录时间 ${cur.at || '（默认值，从未切换过）'}`)
     console.log(`文件     ${path.join(home, 'dsh-forge', 'state.json')}`)
     return
@@ -160,20 +159,6 @@ function switchCmd(config, sub) {
   }
 
   throw new Error('switch 子命令：status | on | off')
-}
-
-function uiCmd(config, sub) {
-  if (!sub || sub === 'status') {
-    const cur = readState(config.dshHome)
-    console.log(`悬浮层 ${cur.ui ? '显示' : '隐藏'}`)
-    return
-  }
-  if (sub === 'on' || sub === 'off') {
-    const next = setUiVisible(config.dshHome, sub === 'on')
-    console.log(`悬浮层 → ${next.ui ? '显示' : '隐藏'}`)
-    return
-  }
-  throw new Error('ui 子命令：status | on | off')
 }
 
 /* ------------------------------------------------------------------ prompt */
@@ -402,7 +387,6 @@ async function main() {
 
   cap list | apply <id> [--destructive] | revert <id>
   switch status | on | off        总开关（功能是否生效）
-  ui status | on | off            悬浮层显示（不影响功能）
   prompt list | use <id> | off | show
   effect list
   advice
@@ -450,7 +434,6 @@ async function main() {
   }
 
   if (group === 'switch') return switchCmd(config, sub)
-  if (group === 'ui') return uiCmd(config, sub)
   if (group === 'prompt') return promptCmd(config, sub || 'list', extra)
   if (group === 'advice') return adviceCmd(config)
   if (group === 'effect') return effectCmd(config, sub)

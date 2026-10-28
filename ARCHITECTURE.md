@@ -243,7 +243,7 @@ index.js
 | L2 | `pre-step` 的 `messages` | 新 messages | 是（按规则 id 标记） | 上游 reject 先于我们 | 卸插件即恢复 |
 | L3 | `deriveMessages()` 返回值 | 新数组 | 是 | Message 深冻结，只能替换不能改 | 卸插件即恢复 |
 | L4 | 磁盘 `.jsonl.zstd` | 改写后的文件 | 需显式 | 压缩格式变更 / 会话正在跑 | ⚠️ 需自带 .bak |
-| L5 | `/api/state` | 浮动层 DOM（`position:fixed`，不占位） | — | 插槽改名 | 卸插件即恢复 |
+| L5 | `/api/state` | 输入框行内的 iOS 开关（`conversation.input.left`） | — | 插槽改名 | 卸插件即恢复 |
 
 **硬约束**：
 1. 任何层都**不得**写宿主 `@deepseek-ai/*` 目录。违反即视为架构事故。
@@ -456,7 +456,7 @@ dsh-forge-drill     独立插件：SQLite 事实库 + 工具面 + UI
 | P13 | 能力协议中间件（L1b，complete:true 下也不丢） | ✅ 完成 |
 | P14 | preview 工具（用宿主 renderPrompt 真实渲染） | ✅ 完成 |
 | P15 | 运行时总开关（state.json + 管线闸 + UI 开关 + HTTP op） | ✅ 完成 |
-| P15b | `/forge` 命令（悬浮层默认关，命令是唯一不依赖 UI 的通道） | ✅ 完成 |
+| P15b | 界面收敛为输入框行内 iOS 开关（默认关，无需 slash 命令） | ✅ 完成 |
 | P16 | `dsh-forge-drill` 独立插件 | ⬜ 待做（独立项目） |
 | — | 自测 | ✅ 90/90 通过，`node --check` 全绿 |
 

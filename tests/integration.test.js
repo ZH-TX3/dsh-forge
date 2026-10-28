@@ -8,7 +8,12 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { apply } from '../index.js'
+import { useTempHome } from './helpers.js'
 import { PROMPT_SECTION, CONTEXT_SECTION } from '../layers/builtin.js'
+
+// 总开关默认关，集成测试必须显式打开，且用临时 home（不碰跑测机器上的真实状态）。
+const HOME = useTempHome({ enabled: true })
+process.on('exit', () => HOME.restore())
 
 function makeCtx() {
   const hooks = new Map()

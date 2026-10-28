@@ -5,6 +5,8 @@
  *   · 配置（cordis.patch.yml）属于「结构」，改它要重启
  *   · 开关属于「此刻要不要生效」，运行时切，立即起作用
  *
+ * 状态文件不存在 = 关（返回 enabled:false）。UI 上那个 iOS 开关直接反映它。
+ *
  * 为什么不是纯 UI 开关：UI 只隐藏面板没有意义。关掉必须让**四层改写和效果一起停**，
  * 否则用户以为关了、其实提示词还在注入。
  *
@@ -31,9 +33,11 @@ function realHome(dshHome) {
 
 /**
  * 读开关状态。
- *   · enabled 默认开（装上就工作）
- *   · ui 默认关（悬浮层不自己冒出来，要显式打开）
- * @returns {{enabled:boolean, ui:boolean, at:string|null, exists:boolean}}
+ *
+ * **默认关**：文件不存在就返回 enabled:false —— 装上插件不等于立刻改行为，
+ * 要用户在输入框那一行的 iOS 开关上显式打开（或 `forge switch on`）。
+ *
+ * @returns {{enabled:boolean, at:string|null, exists:boolean}}
  */
 export function readState(dshHome, now = Date.now()) {
   const home = realHome(dshHome)
@@ -41,13 +45,11 @@ export function readState(dshHome, now = Date.now()) {
   const hit = cache.get(file)
   if (hit && now - hit.at < TTL_MS) return hit.value
 
-  // ui 默认 **关**：插件装上不等于要在屏幕上挂个东西，要用再开。
-  let value = { enabled: true, ui: false, at: null, exists: false }
+  let value = { enabled: false, at: null, exists: false }
   try {
     const raw = JSON.parse(fs.readFileSync(file, 'utf8'))
     value = {
-      enabled: raw?.enabled !== false,
-      ui: raw?.ui === true,
+      enabled: raw?.enabled === true,
       at: typeof raw?.at === 'string' ? raw.at : null,
       exists: true,
     }
@@ -65,7 +67,6 @@ export function writeState(dshHome, patch = {}) {
   const current = readState(home)
   const next = {
     enabled: typeof patch.enabled === 'boolean' ? patch.enabled : current.enabled,
-    ui: typeof patch.ui === 'boolean' ? patch.ui : current.ui,
     at: new Date().toISOString(),
   }
   fs.mkdirSync(path.dirname(file), { recursive: true })
@@ -78,11 +79,6 @@ export function writeState(dshHome, patch = {}) {
 
 export function setEnabled(dshHome, enabled) {
   return writeState(dshHome, { enabled: !!enabled })
-}
-
-/** 悬浮层显示开关（与功能开关独立：UI 可以藏起来，功能照常）。 */
-export function setUiVisible(dshHome, visible) {
-  return writeState(dshHome, { ui: !!visible })
 }
 
 /**

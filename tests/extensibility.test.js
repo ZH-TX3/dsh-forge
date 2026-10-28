@@ -11,6 +11,11 @@ import { Pipeline, normalize } from '../core/pipeline.js'
 import { createRunner } from '../core/runner.js'
 import { closedLayers, layerOpen, resolveConfig } from '../core/config.js'
 import { apply } from '../index.js'
+import { useTempHome } from './helpers.js'
+
+// layerMeta() 不依赖开关，但 apply() 会读 state；摊一个临时 home 保持隔离。
+const HOME = useTempHome({ enabled: true })
+process.on('exit', () => HOME.restore())
 
 const fakeJournal = () => ({
   touches: [],
