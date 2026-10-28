@@ -185,3 +185,45 @@ features/<id>/
 2. **`isolate` 分 realm 的实例生命周期** —— 需在 P2 实测：模式内 `fs` 替换是否影响同会话宿主工具。
 3. **热插拔边界** —— 预设是编译期装配，`mods/` 的热插拔只存在于 `features/middleware` 内层，不承诺跨 feature 热插拔。
 4. **会话历史不可撤** 依然成立（结构性问题，非本设计能解）；模式化只是让它不再发生在新会话里。
+
+---
+
+## 11. 实施状态（P1 / P2 已落）
+
+| feature | 状态 | 落点（真宿主） | 断言 |
+|---|---|---|---|
+| `persona` | 已实现 | `systemPrompt.section(complete)` | V-A1 / V-F |
+| `rules` | 已实现 | `systemPrompt.context` | V-A2 / V-F |
+| `middleware` | 已实现 | `system-prompt/assemble` 瀑布 | V-G1..G4 |
+| `bypass-approval` | 已实现 | `approval/request` 瀑布（agent 作用域） | V-H1..H3 |
+| `hooks-bypass` | 已实现 | `tools/pre-execute` 瀑布 + `prepend` | V-I1..I4 |
+| `bypass-fs` | 待做 | 换 `ctx.fs` provider（`dsh-fs-local` ↔ `dsh-fs-sandbox`） | — |
+| `chain` | 待做 | `systemPrompt.section` + `context` | — |
+| `toolbox.*` | 待做 | 模式内命令 | — |
+
+### 两条从 purge 那边换来的教训
+
+1. **`approval` policy 不能设 `never`。** 宿主的 never 分支在 `decide()` 里
+   先于 waterfall 返回 `'rejected'`（fail-closed 承诺的一部分），监听器根本收不到请求。
+   零补丁方案的前提是 policy = `'ask'` + 终端 answerer。照抄 purge 的
+   `Config.policy = never` 会把自己锁死在监听器缝外。
+2. **hooks 判决只能 prepend + await next() 改写，不能「替它决定」。**
+   宿主把 hooks 的 deny 直接 claim，排在它后面就轮不到你；排它前面又不知道它会怎么判。
+   唯一正确姿势是先让下游跑完再换终局判决 —— 副作用不减，换的只是结论。
+
+## 12. 与 dsh-purge 的能力对照（逐项，勿重复劳动）
+
+| purge 的做法 | forge 的落点 | 结论 |
+|---|---|---|
+| #6 seatbelt `deny file-write*` → `allow` | 换 `ctx.fs` provider（`dsh-fs-local` 替代 `dsh-fs-sandbox`） | 可等价，待做 |
+| #15 `confine()` 返回未包裹 argv | 同上，或换 `ctx.sandbox` provider | 可等价，待做 |
+| #16 `checkedTarget()` 直接 `return target` | 同上（provider 不带围栏即无检查） | 可等价，待做 |
+| #17 观察策略 `writeIntent/editIntent` 返回 void | 不 compose `dsh-fs-observation-policy` | 需实测：宿主是全局挂的，预设能否隔离 |
+| #9 `ApprovalService.decide()` 恒返 `allowed-once` | `approval/request` 终端 answerer | **已实现**（policy 必须留在 ask） |
+| #13/#14 `approveEscalation()` 缺审批时授信 | 同上，answerer 授信后不必动阶梯 | **已实现**（副作用同 #9） |
+| #30/#31/#64/#65 hooks deny 哨兵字符串 | `tools/pre-execute` prepend + 反转终局判决 | **已实现** |
+| #7/#8 `sandbox-policy.mode` / `user-approval.policy` 改默认 | 会话策略变化，属产品级 Permissions，不由模式代改 | 有意不做 |
+| #5/#11/#12 prompt 常量 NEVER/ASK_SENTENCE | 需 `systemPrompt.context` 同名覆盖（order 语义未验证） | 未验证 |
+| capability-protocol（skills/MCP 路由协议） | `systemPrompt.section`，零补丁可搬 | 待做（并入 `chain`） |
+| settle-policy（启动落定窗口） | 无对应：forge 不改宿主，没有要重打的东西 | 不需要 |
+| 反替换表（8 条 find/replace） | 无对应：不留宿主动过的痕迹 | 不需要 |

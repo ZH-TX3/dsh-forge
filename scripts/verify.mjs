@@ -249,6 +249,22 @@ check(
   `spec=${fileSpecs.length} 相对=${JSON.stringify(relSpecs)} 缺失=${JSON.stringify(missing)} 越界=${JSON.stringify(outside)}`,
 )
 
+/* --------------------------------------- V-C4 features 目录与清单一致 */
+
+const featureDirs = fs
+  .readdirSync(path.join(ROOT, 'features'), { withFileTypes: true })
+  .filter((d) => d.isDirectory())
+  .map((d) => d.name)
+  .sort()
+const specDirs = specPaths.map((p) => path.basename(path.dirname(p))).sort()
+const unlisted = featureDirs.filter((d) => !specDirs.includes(d))
+check(
+  'V-C4',
+  '每个 features/ 目录都在模式清单里（加了目录忘了加行会报）',
+  unlisted.length === 0 && specDirs.length === featureDirs.length,
+  `目录=${JSON.stringify(featureDirs)} 清单=${JSON.stringify(specDirs)} 未挂=${JSON.stringify(unlisted)}`,
+)
+
 /* ------------------------------------------------ V-C2 用户配置零侵入 */
 
 const profilePatchCandidates = [
@@ -261,6 +277,160 @@ check(
   '用户 profile 补丁里没有 forge 的行（模式不靠改用户配置生效）',
   profileTouched.length === 0,
   profileTouched.length ? `命中 ${profileTouched.join(', ')}` : `${profilePatchCandidates.length} 个 profile 补丁已检查`,
+)
+
+/* -------------------------------------------------- V-G 中间件管线（真装配） */
+
+const middlewareFeature = await import(new URL('../features/middleware/index.js', import.meta.url).href)
+const approvalFeature = await import(new URL('../features/bypass-approval/index.js', import.meta.url).href)
+
+const modDir = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-mods-'))
+const addMod = (text) =>
+  `export default { id: 'mod:verify', field: 'sections', priority: 10, apply(sections) { return [{ name: 'mod:verify', text: ${JSON.stringify(text)}, interpolate: false }, ...sections] } }\n`
+
+const midHost = await newHost()
+const midKey = {}
+const midScope = createScope(midHost, midKey)
+fs.writeFileSync(path.join(modDir, 'a-add.mjs'), addMod('MOD-ADD'), 'utf8')
+await midScope.ctx.plugin(middlewareFeature, { dir: modDir, rescanMs: 0 })
+
+const asm1 = await midHost.systemPrompt.assemble({ scope: midKey })
+const mod1 = find(asm1.sections, 'mod:verify')
+check(
+  'V-G1',
+  'mod 在预设 scope 的装配里生效（sections 被改写）',
+  Boolean(mod1) && String(mod1.text) === 'MOD-ADD',
+  `sections=${JSON.stringify(names(asm1.sections))}`,
+)
+
+await new Promise((r) => setTimeout(r, 20))
+fs.writeFileSync(path.join(modDir, 'a-add.mjs'), addMod('MOD-ADD-SECOND-LONGER'), 'utf8')
+const asm2 = await midHost.systemPrompt.assemble({ scope: midKey })
+check(
+  'V-G2',
+  'mod 改文件即重载（mtime 指纹变了才重新 import）',
+  String(find(asm2.sections, 'mod:verify')?.text) === 'MOD-ADD-SECOND-LONGER',
+  `text=${JSON.stringify(find(asm2.sections, 'mod:verify')?.text)}`,
+)
+
+await new Promise((r) => setTimeout(r, 20))
+fs.writeFileSync(
+  path.join(modDir, 'b-boom.mjs'),
+  "export default { id: 'mod:boom', field: 'sections', apply() { throw new Error('boom: 故意炸') } }\n",
+  'utf8',
+)
+let asm3
+let boomThrew = false
+try {
+  asm3 = await midHost.systemPrompt.assemble({ scope: midKey })
+} catch {
+  boomThrew = true
+}
+check(
+  'V-G3',
+  '一个 mod 抛错不影响装配，其余 mod 照常生效',
+  !boomThrew && String(find(asm3?.sections, 'mod:verify')?.text) === 'MOD-ADD-SECOND-LONGER',
+  boomThrew ? '装配被 mod 的异常打断' : `sections=${JSON.stringify(names(asm3?.sections))}`,
+)
+
+const cleanKey = {}
+createScope(midHost, cleanKey)
+const cleanAsm = await midHost.systemPrompt.assemble({ scope: cleanKey })
+check(
+  'V-G4',
+  '不挂 middleware 的 scope 不受任何 mod 影响',
+  find(cleanAsm.sections, 'mod:verify') === undefined,
+  `sections=${JSON.stringify(names(cleanAsm.sections))}`,
+)
+fs.rmSync(modDir, { recursive: true, force: true })
+
+/* ------------------------------------------------------ V-H 授信旁路判决 */
+
+check(
+  'V-H1',
+  'allow 为空 = 全放（返回 allowed-once 接管该请求）',
+  approvalFeature.decide({ enabled: true, allow: [] }, { toolName: 'bash' }) === 'allowed-once',
+  String(approvalFeature.decide({ enabled: true, allow: [] }, { toolName: 'bash' })),
+)
+
+check(
+  'V-H2',
+  '通配符命中才放，未命中的交回宿主（null = next()）',
+  approvalFeature.decide({ enabled: true, allow: ['bash*', 'pwsh'] }, { toolName: 'bash' }) === 'allowed-once' &&
+    approvalFeature.decide({ enabled: true, allow: ['bash*', 'pwsh'] }, { toolName: 'fs_write' }) === null &&
+    approvalFeature.decide({ enabled: true, allow: ['bash*'] }, { toolName: 'BASH-persistent' }) === 'allowed-once',
+  '',
+)
+
+check(
+  'V-H3',
+  'enabled: false 一键收手（任何请求都不接管）',
+  approvalFeature.decide({ enabled: false, allow: [] }, { toolName: 'bash' }) === null,
+  '',
+)
+
+/* ------------------------------------------- V-I hooks 判决旁路（真瀑布） */
+
+const { scopeTarget } = await import(url('dsh-scope/lib/index.js'))
+const hooksFeature = await import(new URL('../features/hooks-bypass/index.js', import.meta.url).href)
+
+// 一个只有「宿主判决」的 host：它 claim deny，不调 next，正如真的 hooks 桥。
+const denyHost = new Context()
+await denyHost.plugin({
+  name: 'host-deny-probe',
+  apply(c) {
+    c.effect(
+      () => c.on('tools/pre-execute', () => Promise.resolve({ kind: 'deny', reason: 'probe: 宿主 hooks 拦下' })),
+      'probe.deny',
+    )
+  },
+})
+
+const dispatch = (key) =>
+  denyHost.waterfall(scopeTarget({}, key), 'tools/pre-execute', { name: 'bash', arguments: {} }, () =>
+    Promise.resolve({ kind: 'allow' }),
+  )
+
+const bareKey = {}
+createScope(denyHost, bareKey)
+const bareDecision = await dispatch(bareKey)
+check(
+  'V-I1',
+  '对照组：没有 forge 的 scope，宿主 deny 原样生效',
+  bareDecision?.kind === 'deny',
+  `kind=${bareDecision?.kind}`,
+)
+
+const bypassKey = {}
+const bypassScope = createScope(denyHost, bypassKey)
+await bypassScope.ctx.plugin(hooksFeature, { enabled: true, invert: ['deny', 'ask'], tools: [] })
+const bypassed = await dispatch(bypassKey)
+check(
+  'V-I2',
+  'prepend + await next() 之后把 deny 反转成 allow',
+  bypassed?.kind === 'allow',
+  `kind=${bypassed?.kind}`,
+)
+
+const offKey = {}
+const offScope = createScope(denyHost, offKey)
+await offScope.ctx.plugin(hooksFeature, { enabled: false })
+const offDecision = await dispatch(offKey)
+check(
+  'V-I3',
+  'enabled: false 时判决不被改写',
+  offDecision?.kind === 'deny',
+  `kind=${offDecision?.kind}`,
+)
+
+check(
+  'V-I4',
+  '纯判决函数：工具过滤与 kind 过滤都咬得住',
+  hooksFeature.rewrite({ kind: 'deny' }, { name: 'bash' }, { tools: ['bash*'] })?.kind === 'allow' &&
+    hooksFeature.rewrite({ kind: 'deny' }, { name: 'fs_write' }, { tools: ['bash*'] })?.kind === 'deny' &&
+    hooksFeature.rewrite({ kind: 'cancel' }, { name: 'bash' }, {})?.kind === 'cancel' &&
+    hooksFeature.rewrite({ kind: 'allow' }, { name: 'bash' }, {})?.kind === 'allow',
+  '',
 )
 
 /* ------------------------------------------------------------------ 输出 */
