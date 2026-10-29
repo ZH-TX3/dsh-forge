@@ -24,7 +24,6 @@ function findAiBase() {
   const roots = [
     process.env.DSH_FORGE_AIBASE,
     path.dirname(process.execPath),
-    'D:/nvm/v24.18.1',
     path.join(process.env.APPDATA || '', 'npm'),
   ].filter(Boolean)
   for (const root of roots) {

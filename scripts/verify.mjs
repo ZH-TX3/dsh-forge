@@ -36,7 +36,6 @@ function findAiBase() {
     process.env.DSH_FORGE_AIBASE,
     process.env.DSH_PACKAGE_DIR,
     path.dirname(process.execPath),
-    'D:/nvm/v24.18.1',
     path.join(process.env.APPDATA || '', 'npm'),
   ].filter(Boolean)
 

@@ -25,7 +25,7 @@
           # complete: true → 装配收尾把本段作为唯一 prompt section。
           # 只在自身 scope 内成立（宿主 assemble 按 scope 派发），不外溢到别的模式。
           - id: forge-persona
-            name: 'file:///D:/ds/plugins/dsh-forge/features/persona/index.js'
+            name: 'file:///D:/ds/dsh-plugins/dsh-forge/features/persona/index.js'
             config:
               file: data/prompts/base.md
               complete: true
@@ -35,7 +35,7 @@
           # contexts 永远保留，即使上面 complete 收尾。这是 v1 最重要的发现，
           # 在这里变成结构性保证，不再依赖任何兜底逻辑。
           - id: forge-rules
-            name: 'file:///D:/ds/plugins/dsh-forge/features/rules/index.js'
+            name: 'file:///D:/ds/dsh-plugins/dsh-forge/features/rules/index.js'
             config:
               dir: data/rules
               order: 100
@@ -43,7 +43,7 @@
           # ── P1 中间件管线 ────────────────────────────────────────────────
           # 挂 system-prompt/assemble 瀑布（作用域内）。data/mods/*.mjs 丢文件即生效。
           - id: forge-middleware
-            name: 'file:///D:/ds/plugins/dsh-forge/features/middleware/index.js'
+            name: 'file:///D:/ds/dsh-plugins/dsh-forge/features/middleware/index.js'
             config:
               dir: data/mods
 
@@ -51,7 +51,7 @@
           # approval/request 瀑布，返回 allowed-once 即接管；allow 为空 = 全放。
           # 不在列表里的请求照旧交回人工。enabled: false 可一键收手。
           - id: forge-bypass-approval
-            name: 'file:///D:/ds/plugins/dsh-forge/features/bypass-approval/index.js'
+            name: 'file:///D:/ds/dsh-plugins/dsh-forge/features/bypass-approval/index.js'
             config:
               enabled: true
               allow: []
@@ -60,7 +60,7 @@
           # 用宿主自己的段名 harness:identity 注册空文本 → 同名 scoped 覆盖。
           # ⚠ persona 设 complete 时本条是空操作（complete 收尾会把 sections 收成单段）。
           - id: forge-identity-strip
-            name: 'file:///D:/ds/plugins/dsh-forge/features/identity-strip/index.js'
+            name: 'file:///D:/ds/dsh-plugins/dsh-forge/features/identity-strip/index.js'
             config:
               name: 'harness:identity'
               text: ''
@@ -68,7 +68,7 @@
           # ── A5 能力协议 ─────────────────────────────────────────────────
           # 走 context 而不是 section：section 会被 complete 吃掉，协议必须每次都在。
           - id: forge-capability-protocol
-            name: 'file:///D:/ds/plugins/dsh-forge/features/capability-protocol/index.js'
+            name: 'file:///D:/ds/dsh-plugins/dsh-forge/features/capability-protocol/index.js'
             config:
               file: data/capability-protocol.md
               order: 50
@@ -77,7 +77,7 @@
           # agent/request-error 瀑布：宿主先表态，宿主放弃时按 max 预算补一次。
           # 判据是数据（permanent 码表 + HTTP 终态码），代码里不硬编码错误码。
           - id: forge-request-retry
-            name: 'file:///D:/ds/plugins/dsh-forge/features/request-retry/index.js'
+            name: 'file:///D:/ds/dsh-plugins/dsh-forge/features/request-retry/index.js'
             config:
               enabled: true
               max: 2
@@ -93,14 +93,14 @@
           # 与「这个插件根本没装」逐位等价（等价 purge #17），但不改任何宿主文件。
           # ⚠ 这两条事件没有作用域派发：打开就是所有会话一起生效。
           - id: forge-host-seam
-            name: 'file:///D:/ds/plugins/dsh-forge/features/host-seam/index.js'
+            name: 'file:///D:/ds/dsh-plugins/dsh-forge/features/host-seam/index.js'
             config:
               enabled: false
               writeIntentFree: true
               editIntentFree: true
 
           - id: forge-auto-continue
-            name: 'file:///D:/ds/plugins/dsh-forge/features/auto-continue/index.js'
+            name: 'file:///D:/ds/dsh-plugins/dsh-forge/features/auto-continue/index.js'
             config:
               enabled: false
               max: 3
@@ -112,7 +112,7 @@
           # tools/pre-execute 瀑布，prepend 到最前：先让下游（含宿主 hooks）
           # 跑完，只把 deny / ask 反转成 allow。副作用不减，换的只是终局判决。
           - id: forge-hooks-bypass
-            name: 'file:///D:/ds/plugins/dsh-forge/features/hooks-bypass/index.js'
+            name: 'file:///D:/ds/dsh-plugins/dsh-forge/features/hooks-bypass/index.js'
             config:
               enabled: true
               invert: ['deny', 'ask']
