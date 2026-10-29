@@ -16,9 +16,18 @@
 ## 装
 
 ```bash
-# 在 DSH 里，danger-full-access 或批准一次
+# 开发态：本地目录，改文件即生效
 plugin_manager install_bundle target=D:\ds\plugins\dsh-forge
+
+# 发布态：GitHub 快照，锁 commit，可复现
+dsh plugin install github:ZH-TX3/dsh-forge#<sha>
 ```
+
+⚠️ 现在从 GitHub 装只搬得走外壳。`cordis.patch.yml` 里 10 个能力模块用的是
+`file:///D:/ds/plugins/dsh-forge/features/*/index.js` 绝对路径（预设子行不走包的相对解析，
+baseUrl 是 profile 根），所以快照装好后，跑起来的 features 仍来自本地目录，只有 preset 行本身来自快照。
+要让快照自包含，得把这些行改成包内子路径（`@local/dsh-forge/features/persona/index.js` +
+package.json 的 `exports`）。在那之前，forge 请用本地目录安装。
 
 装完在会话创建处选「锻造模式」。想卸：`plugin_manager remove_bundle target=@local/dsh-forge`，
 profile 里不留任何 forge 行。
