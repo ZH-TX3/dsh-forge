@@ -123,10 +123,10 @@ features/<id>/
             name: '@deepseek-ai/dsh-persona'
             config: { prefix: | <硬规则短版，内联> }
           - id: forge-persona
-            name: 'file:///<plugin>/features/persona/index.js'
+            name: '@local/dsh-forge/features/persona/index.js'
             config: { file: data/prompts/base.md, complete: true }
           - id: forge-rules
-            name: 'file:///<plugin>/features/rules/index.js'
+            name: '@local/dsh-forge/features/rules/index.js'
             config: { dir: data/rules }
           # P1 起逐阶段追加
 ```

@@ -231,21 +231,25 @@ check(
 
 /* ------------------------------------------- V-C3 子行 spec 指向真文件 */
 
-// 预设子行不走 Loader 的相对解析，只能用 file:// 绝对路径。
-// 代价是路径写死在 patch 里：换目录、搬仓库会静默变成 "never started"。
-// 这条断言把它变成开机就报的硬错。
-const fileSpecs = [...patchText.matchAll(/name:\s*'(file:\/\/\/[^']+)'/g)].map((m) => m[1])
+// 子行 spec 写成「包名 + 包内路径」（@local/dsh-forge/features/x/index.js）。
+// 预设子行不走 Loader 的相对解析（相对 baseUrl 是 profile 根），而裸包名走 profile 的
+// node_modules —— 于是 link: / file: / .tgz 三种装法解析到同一份代码。
+// 禁止再出现绝对路径或 ./ 相对路径：那两种都会让打包分发静默跑错源。
+const PKG = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).name
+const PKG_RE = new RegExp(`name:\\s*'(${PKG.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\/[^']+)'`, 'g')
+const pkgSpecs = [...patchText.matchAll(PKG_RE)].map((m) => m[1])
+const absSpecs = [...patchText.matchAll(/name:\s*'(file:\/\/\/[^']+|[A-Za-z]:[\\/][^']*|\/[^']*)'/g)].map((m) => m[1])
 const relSpecs = [...patchText.matchAll(/name:\s*'\.\/[^']*'/g)].map((m) => m[0])
-const specPaths = fileSpecs.map((spec) => fileURLToPath(spec))
+const specPaths = pkgSpecs.map((spec) => path.join(ROOT, ...spec.slice(PKG.length + 1).split('/')))
 const rootLower = ROOT.toLowerCase()
 const inRoot = (p) => p.toLowerCase() === rootLower || p.toLowerCase().startsWith(rootLower + path.sep)
 const missing = specPaths.filter((p) => !fs.existsSync(p))
 const outside = specPaths.filter((p) => !inRoot(p))
 check(
   'V-C3',
-  '子行 file:// spec 都指向本仓库内真实存在的文件（搬目录会立刻报错）',
-  fileSpecs.length > 0 && relSpecs.length === 0 && missing.length === 0 && outside.length === 0,
-  `spec=${fileSpecs.length} 相对=${JSON.stringify(relSpecs)} 缺失=${JSON.stringify(missing)} 越界=${JSON.stringify(outside)}`,
+  '子行 spec 用包名 + 包内路径，且指向本仓库内真实存在的文件',
+  pkgSpecs.length > 0 && absSpecs.length === 0 && relSpecs.length === 0 && missing.length === 0 && outside.length === 0,
+  `包名 spec=${pkgSpecs.length} 绝对=${JSON.stringify(absSpecs)} 相对=${JSON.stringify(relSpecs)} 缺失=${JSON.stringify(missing)} 越界=${JSON.stringify(outside)}`,
 )
 
 /* --------------------------------------- V-C4 features 目录与清单一致 */
