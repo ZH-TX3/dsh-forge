@@ -103,7 +103,7 @@ export function shouldContinue(input = {}, config = {}) {
   return true
 }
 
-export function apply(ctx, config = {}) {
+export function mount(ctx, config = {}) {
   const enabled = config.enabled === true
   const delayMs = Number.isFinite(config.delayMs) ? Number(config.delayMs) : 280
   const text = typeof config.text === 'string' && config.text.trim() ? config.text : '继续'
@@ -205,6 +205,15 @@ export function apply(ctx, config = {}) {
   )
 
   return { journal: () => log.slice(-20) }
+}
+
+/**
+ * 预设挂载入口。**必须不返回任何值** —— Cordis 把 apply 的返回值当成 effect，
+ * 返回普通对象会抛 "Invalid effect"，插件静默挂不上（现象是这一行不动）。
+ * 需要句柄的测试与脚本调 `mount()`。
+ */
+export function apply(ctx, config = {}) {
+  mount(ctx, config)
 }
 
 export default { name, apply }

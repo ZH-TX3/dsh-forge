@@ -21,7 +21,7 @@ export const inject = ['systemPrompt']
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const SECTION = 'forge:persona'
 
-export function apply(ctx, config = {}) {
+export function mount(ctx, config = {}) {
   try {
     const abs = path.resolve(ROOT, String(config.file || 'data/prompts/base.md'))
     const order = Number.isFinite(config.order) ? Number(config.order) : 100
@@ -54,6 +54,15 @@ export function apply(ctx, config = {}) {
     console.warn(`[forge] persona 未挂载：${error?.message || error}`)
     return { ok: false, error: String(error?.message || error) }
   }
+}
+
+/**
+ * 预设挂载入口。**必须不返回任何值** —— Cordis 把 apply 的返回值当成 effect，
+ * 返回普通对象会抛 "Invalid effect"，插件静默挂不上（现象是这一行不动）。
+ * 需要句柄的测试与脚本调 `mount()`。
+ */
+export function apply(ctx, config = {}) {
+  mount(ctx, config)
 }
 
 export default { name, inject, apply }

@@ -62,7 +62,7 @@ const scope = createScope(host, key)
 // plugin() 返回 Fiber，拿不到 apply 的返回值 —— 薄包装捕获一次。
 let api
 await scope.ctx.plugin(
-  { name: 'mods-capture', inject: ['systemPrompt'], apply: (c, cfg) => void (api = middleware.apply(c, cfg)) },
+  { name: 'mods-capture', inject: ['systemPrompt'], apply: (c, cfg) => void (api = middleware.mount(c, cfg)) },
   { dir: 'data/mods', rescanMs: 0 },
 )
 

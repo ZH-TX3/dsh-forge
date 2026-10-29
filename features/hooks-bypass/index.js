@@ -52,7 +52,7 @@ export function rewrite(decision, exec, config = {}) {
   return { kind: 'allow' }
 }
 
-export function apply(ctx, config = {}) {
+export function mount(ctx, config = {}) {
   const log = []
   const record = (line) => {
     log.push({ at: new Date().toISOString(), ...line })
@@ -82,6 +82,15 @@ export function apply(ctx, config = {}) {
   }
 
   return { journal: () => log.slice(-20) }
+}
+
+/**
+ * 预设挂载入口。**必须不返回任何值** —— Cordis 把 apply 的返回值当成 effect，
+ * 返回普通对象会抛 "Invalid effect"，插件静默挂不上（现象是这一行不动）。
+ * 需要句柄的测试与脚本调 `mount()`。
+ */
+export function apply(ctx, config = {}) {
+  mount(ctx, config)
 }
 
 export default { name, apply }

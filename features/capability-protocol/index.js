@@ -21,7 +21,7 @@ export const inject = ['systemPrompt']
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const CONTEXT_NAME = 'forge:capability-protocol'
 
-export function apply(ctx, config = {}) {
+export function mount(ctx, config = {}) {
   if (config.enabled === false) return { ok: true, skipped: true }
 
   const abs = path.resolve(ROOT, String(config.file || 'data/capability-protocol.md'))
@@ -45,6 +45,15 @@ export function apply(ctx, config = {}) {
     console.warn(`[forge] capability-protocol 未挂载：${error?.message || error}`)
     return { ok: false, error: String(error?.message || error) }
   }
+}
+
+/**
+ * 预设挂载入口。**必须不返回任何值** —— Cordis 把 apply 的返回值当成 effect，
+ * 返回普通对象会抛 "Invalid effect"，插件静默挂不上（现象是这一行不动）。
+ * 需要句柄的测试与脚本调 `mount()`。
+ */
+export function apply(ctx, config = {}) {
+  mount(ctx, config)
 }
 
 export default { name, inject, apply }

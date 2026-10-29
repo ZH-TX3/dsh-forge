@@ -631,6 +631,105 @@ check(
   check('V-N', '每个 feature 都能在只有 systemPrompt 的宿主上挂载完成（不 waiting）', stuck.length === 0, `卡住：${JSON.stringify(stuck)}`)
 }
 
+/* --------------------------------------- V-O L0 seam：让写前闸失效（真瀑布） */
+
+const seamFeature = await import(new URL('../features/host-seam/index.js', import.meta.url).href)
+
+// 模拟宿主：一个 claim 判决、从不调 next 的闸（正是 fs-observation-policy 的形状）。
+const gateHost = new Context()
+await gateHost.plugin({
+  name: 'host-gate-probe',
+  apply(c) {
+    c.effect(
+      () => c.on('fs/write-intent', () => Promise.resolve({ kind: 'createIfAbsent' })),
+      'probe.gate',
+    )
+  },
+})
+const gateKey = {}
+const gateScope = createScope(gateHost, gateKey)
+const askIntent = (key) =>
+  gateHost.waterfall(scopeTarget({}, key), 'fs/write-intent', { path: 'x' }, undefined, () =>
+    Promise.resolve({ kind: 'createIfAbsent' }),
+  )
+
+const beforeSeam = await gateHost.waterfall(
+  scopeTarget({}, gateKey),
+  'fs/write-intent',
+  { path: 'x' },
+  undefined,
+  () => Promise.resolve({ kind: 'createIfAbsent' }),
+)
+check(
+  'V-O1',
+  '对照组：宿主闸在，写前判决存在',
+  beforeSeam?.kind === 'createIfAbsent',
+  `intent=${JSON.stringify(beforeSeam)}`,
+)
+
+// 打开 L0 seam（这里用 iframe 之外的普通挂载；真机里它是全局监听）
+const seamScope = await gateHost.plugin({
+  name: 'seam-wrapper',
+  apply(c) {
+    seamFeature.apply(c, { enabled: true })
+    return undefined
+  },
+})
+const afterSeam = await gateHost.waterfall(
+  scopeTarget({}, gateKey),
+  'fs/write-intent',
+  { path: 'x' },
+  undefined,
+  () => Promise.resolve({ kind: 'createIfAbsent' }),
+)
+check(
+  'V-O2',
+  'L0 seam 打开后写前判决消失（prepend claim，不调 next）',
+  afterSeam === undefined,
+  `intent=${JSON.stringify(afterSeam)}`,
+)
+
+// 默认关：新宿主上不注册任何东西
+const idleHost = new Context()
+const idleSeam = seamFeature.mount(idleHost, {})
+const idleResult = await idleHost.waterfall(
+  'fs/write-intent',
+  { path: 'x' },
+  undefined,
+  () => Promise.resolve({ kind: 'createIfAbsent' }),
+)
+check(
+  'V-O3',
+  '默认关：不传 enabled 或 enabled:false 时不注册监听器',
+  idleResult?.kind === 'createIfAbsent' && idleSeam.enabled === false,
+  `intent=${JSON.stringify(idleResult)} enabled=${idleSeam.enabled}`,
+)
+
+/* --------------------------- V-P apply 必须无返回值（静态形状检查） */
+
+// 事实核查（2026-10-29）：在 **root** ctx 上 apply 返回普通对象会抛
+// TypeError: Invalid effect；在 **scope** ctx 上（预设挂载的真实路径）返回值
+// 会被静默忽略、fiber 照常 ACTIVE。所以运行时探测抓不住它，只能静态约束形状。
+// 形状定死：apply 只调 mount，不返回任何东西；要句柄的测试调 mount()。
+{
+  const files = fs
+    .readdirSync(path.join(ROOT, 'features'), { withFileTypes: true })
+    .filter((d) => d.isDirectory())
+    .map((d) => path.join(ROOT, 'features', d.name, 'index.js'))
+  const bad = []
+  for (const file of files) {
+    const text = fs.readFileSync(file, 'utf8')
+    const m = text.match(/export function apply\([^)]*\)\s*\{([\s\S]*?)\n\}/)
+    if (!m) {
+      bad.push(`${path.basename(path.dirname(file))}: 没有 apply 导出`)
+      continue
+    }
+    if (/\breturn\b/.test(m[1])) bad.push(`${path.basename(path.dirname(file))}: apply 里有 return`)
+    if (!/\bmount\(ctx, config\)/.test(m[1])) bad.push(`${path.basename(path.dirname(file))}: apply 没有委托 mount`)
+  }
+  check('V-P', 'apply 只委托 mount、无返回值（返回对象在 root ctx 会抛 Invalid effect）', bad.length === 0, JSON.stringify(bad))
+}
+
 /* ------------------------------------------------------------------ 输出 */
 
 const passed = results.filter((r) => r.ok).length

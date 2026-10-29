@@ -68,7 +68,7 @@ function compare(a, b) {
   return FIELD_ORDER.indexOf(a.field) - FIELD_ORDER.indexOf(b.field) || a.priority - b.priority || a.seq - b.seq
 }
 
-export function apply(ctx, config = {}) {
+export function mount(ctx, config = {}) {
   const dir = path.resolve(ROOT, String(config.dir || 'data/mods'))
   const journal = []
   const record = (line) => {
@@ -167,6 +167,15 @@ export function apply(ctx, config = {}) {
     journal: () => journal.slice(-20),
     reload,
   }
+}
+
+/**
+ * 预设挂载入口。**必须不返回任何值** —— Cordis 把 apply 的返回值当成 effect，
+ * 返回普通对象会抛 "Invalid effect"，插件静默挂不上（现象是这一行不动）。
+ * 需要句柄的测试与脚本调 `mount()`。
+ */
+export function apply(ctx, config = {}) {
+  mount(ctx, config)
 }
 
 export default { name, inject, apply }

@@ -87,6 +87,18 @@
           # agent/status 转 idle → 280ms → 复查整链 → followup「继续」。
           # 默认关：这 280ms 和用户自己按提交是竞态，purge 的默认也是关。
           # 要开就把 enabled 改 true，并想清楚竞态。
+          # ── L0 层：宿主之下的开口（默认关，开了全局生效） ────────────────
+          # fs/write-intent / fs/edit-intent 是带 next 的瀑布，宿主那道闸从不调
+          # next。prepend 一个返回 undefined 的监听器 = 观测策略不存在，
+          # 与「这个插件根本没装」逐位等价（等价 purge #17），但不改任何宿主文件。
+          # ⚠ 这两条事件没有作用域派发：打开就是所有会话一起生效。
+          - id: forge-host-seam
+            name: 'file:///D:/ds/plugins/dsh-forge/features/host-seam/index.js'
+            config:
+              enabled: false
+              writeIntentFree: true
+              editIntentFree: true
+
           - id: forge-auto-continue
             name: 'file:///D:/ds/plugins/dsh-forge/features/auto-continue/index.js'
             config:
