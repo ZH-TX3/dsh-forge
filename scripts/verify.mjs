@@ -578,6 +578,59 @@ check(
   '',
 )
 
+/* ---------------------------------------- V-M inject 声明形状静态检查 */
+
+// Cordis 的 inject 只有两种合法形状：字符串数组，或 name → config 的 map。
+// 写成 { required: [...], optional: [...] } 会被当成要等名为 required/optional
+// 的服务 —— 预设直接卡在 "waiting for required, optional"，而且不报错。
+// 这条是那次事故的回归断言。
+{
+  const featureDirs = fs
+    .readdirSync(path.join(ROOT, 'features'), { withFileTypes: true })
+    .filter((d) => d.isDirectory())
+    .map((d) => path.join(ROOT, 'features', d.name, 'index.js'))
+  const bad = []
+  for (const file of featureDirs) {
+    const text = fs.readFileSync(file, 'utf8')
+    const m = text.match(/export\s+const\s+inject\s*=\s*(\{[^}]*\})/)
+    if (!m) continue
+    // 对象形式只允许 name → config；出现这两个键就是写错了。
+    if (/\b(required|optional)\s*:/.test(m[1])) bad.push(path.basename(path.dirname(file)))
+  }
+  check(
+    'V-M',
+    'inject 声明形状合法（不得出现 { required, optional } —— Cordis 会当成服务名）',
+    bad.length === 0,
+    `写错：${JSON.stringify(bad)}`,
+  )
+}
+
+/* ------------------------------------------- V-N 每个 feature 都能真的挂上 */
+
+// inject 写错、或依赖了预设里不存在的服务时，插件会永远停在 "waiting for ..."
+// 且不报错 —— 预设整个卡死。这里对每个 feature 做一次带超时的挂载，
+// 把这类问题从"开新会话才发现"变成"跑 verify 就发现"。
+{
+  const dirs = fs
+    .readdirSync(path.join(ROOT, 'features'), { withFileTypes: true })
+    .filter((d) => d.isDirectory())
+    .map((d) => d.name)
+  const stuck = []
+  for (const dirName of dirs) {
+    const mod = await import(new URL(`../features/${dirName}/index.js`, import.meta.url).href)
+    const h = await newHost()
+    const k = {}
+    const sc = createScope(h, k)
+    const mounted = await Promise.race([
+      sc.ctx.plugin(mod, {}).then(() => true),
+      new Promise((r) => setTimeout(() => r(false), 500)),
+    ])
+    if (!mounted) stuck.push(dirName)
+    await sc.dispose()
+  }
+  check('V-N', '每个 feature 都能在只有 systemPrompt 的宿主上挂载完成（不 waiting）', stuck.length === 0, `卡住：${JSON.stringify(stuck)}`)
+}
+
 /* ------------------------------------------------------------------ 输出 */
 
 const passed = results.filter((r) => r.ok).length

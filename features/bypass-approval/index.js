@@ -19,7 +19,11 @@
  * 授信会静默失效 —— 这是宿主语义，不是本插件的 bug。
  */
 export const name = 'forge-bypass-approval'
-export const inject = { required: ['approval'], optional: [] }
+// 不 inject services：本模块只注册监听器，不调用 approval 的任何方法。
+// （Cordis 的 inject 只有「数组」和「name → config map」两种形式；
+//   写成 { required, optional } 会被当成要等两个叫 required/optional 的服务，
+//   预设因此永远停在 "waiting for required, optional"。）
+export const inject = []
 
 const GRANT = 'allowed-once'
 
