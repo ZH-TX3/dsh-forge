@@ -10,6 +10,7 @@
     }
   },
   "scripts": {
-    "verify": "node scripts/verify.mjs"
+    "verify": "node scripts/verify.mjs",
+    "mods": "node scripts/mods-check.mjs"
   }
 }
