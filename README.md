@@ -164,6 +164,7 @@ lib/                    纯函数与 I/O（files 缓存、journal）
 scripts/verify.mjs      真宿主断言（52）
 scripts/mods-check.mjs  真目录 mods 管线（5）
 MODE.md                 架构设计与阶段计划
+docs/TOOLCHAINS.md      目标平台 → 工具链 / 执行位置 的路由表
 CAPABILITIES.md         与 dsh-purge 的逐项能力对照与实现判断
 ```
 
@@ -208,8 +209,8 @@ export default { name, inject, apply }
 ## 环境
 
 - 开发与验证环境：**Windows + Git Bash（MSYS 路径）**，Node v24，宿主为安装态 DSH。
-  不是 macOS —— 涉及 seatbelt / bwrap / landlock 的条目在本机**不可验证**，
-  仓库里标「不可在本机验证」而不是「待做」。
+- 选工具看**两个独立的轴**：目标平台决定用哪套工具链，执行位置决定跑不跑得起来。
+  macOS 的活不等于"不需要"，等于"工具链是 mac 的、执行位置没有" —— 详见 `docs/TOOLCHAINS.md`。
 - **验收全部是文本**：`verify` / `mods` / `prompt` 都只输出可读文本，会话日志是
   zstd 多帧、按帧头切开解码后读。没有任何一步依赖看屏幕或截图 —— 这不只是习惯，
   是设计约束：能写进文件的才算被看见。

@@ -27,7 +27,7 @@
 | B3 | 「永远不询问」提示句（#11） | 改 prompt 常量 | `systemPrompt.context` 同名覆盖（段名 `approval:policy`） | 有条件：order 语义未验 |
 | B4 | escalation 无条件授信（#13/#14/#34/#35） | 改 `approveEscalation()`，缺审批时授信 | `approval/request` 终端 answerer → `allowed-once` | **已实现** |
 | B5 | sandbox confine 直通（#15） | `confine()` 返回未包裹 argv | 换 `ctx.sandbox` provider（realm 隔离） | 有条件：实例生命周期需真机验 |
-| B6 | seatbelt 写封条反转（#6） | 字面 `deny`→`allow` | 同上（macOS 专属） | 有条件：本机 Windows 不适用 |
+| B6 | seatbelt 写封条反转（#6） | 字面 `deny`→`allow` | 同上（macOS 专属） | 工具链属 macOS（SBPL）；执行位置不可用（需 mac 主机） |
 | B7 | fs 围栏拆掉（#16） | `checkedTarget()` 直通 | 换 `ctx.fs` provider（`dsh-fs-local` 替 `dsh-fs-sandbox`） | 有条件：`cwd` 是静态配置、会话 cwd 是动态的 |
 | B8 | 观察策略放行（#17） | `writeIntent()` 返回 `void` | 宿主全局挂 `dsh-fs-observation-policy`，走 `fs/*` 事件闸 | **不能**（预设卸不掉宿主行；仅换 provider 后待验是否也绕过） |
 
