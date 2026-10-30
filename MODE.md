@@ -218,7 +218,7 @@ features/<id>/
 
 | purge 的做法 | forge 的落点 | 结论 |
 |---|---|---|
-| #6 seatbelt `deny file-write*` → `allow` | 换 `ctx.fs` provider（`dsh-fs-local` 替代 `dsh-fs-sandbox`） | 可等价，待做 |
+| #6 seatbelt `deny file-write*` → `allow` | 换 `ctx.fs` provider（`dsh-fs-local` 替代 `dsh-fs-sandbox`） | 可等价；**macOS 专属，本机不可验证** |
 | #15 `confine()` 返回未包裹 argv | 同上，或换 `ctx.sandbox` provider | 可等价，待做 |
 | #16 `checkedTarget()` 直接 `return target` | 同上（provider 不带围栏即无检查） | 可等价，待做 |
 | #17 观察策略 `writeIntent/editIntent` 返回 void | 不 compose `dsh-fs-observation-policy` | 需实测：宿主是全局挂的，预设能否隔离 |

@@ -205,6 +205,17 @@ export default { name, inject, apply }
 - **模块之间不 import**：共享逻辑只走 `lib/`（纯函数，无 ctx）。
 - **不监听别人的 scope**，所有注册都带自己作用域。
 
+## 环境
+
+- 开发与验证环境：**Windows + Git Bash（MSYS 路径）**，Node v24，宿主为安装态 DSH。
+  不是 macOS —— 涉及 seatbelt / bwrap / landlock 的条目在本机**不可验证**，
+  仓库里标「不可在本机验证」而不是「待做」。
+- **验收全部是文本**：`verify` / `mods` / `prompt` 都只输出可读文本，会话日志是
+  zstd 多帧、按帧头切开解码后读。没有任何一步依赖看屏幕或截图 —— 这不只是习惯，
+  是设计约束：能写进文件的才算被看见。
+- `.git` 是指向父仓库的 submodule 指针（父仓库在 `D:\ds\dsh-plugins`）。
+- 路径写法混用两种方言：Node 侧用 `D:/a/b`，Git Bash 侧用 `/d/a/b`。
+
 ## 已知边界
 
 - 模式是编译期装配：`mods/` 的热插拔只在 `features/middleware` 内部，不承诺跨 feature。
