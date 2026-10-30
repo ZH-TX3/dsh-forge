@@ -111,7 +111,13 @@ export default {
 ```bash
 npm run verify          # 52 条：机制对不对（真宿主、真事件、负向对照）
 npm run mods            # 5 条：你现在装的这套 mod 真的在跑、改/删即时生效
+npm run prompt          # 把「锻造模式」与「部署态基线」的系统提示词都渲染出来做 diff
 ```
+
+`prompt` 是唯一回答「选了模式，模型看到的东西到底变了什么」的工具：
+它读 `cordis.patch.yml`（唯一真相源）+ `dsh --dump-config` 的真实人设，
+用宿主自己的 `renderPrompt` 渲染两份，再给差异。改 `data/prompts/base.md`
+之后跑一次，改动立刻可见。`--raw` 不省略。
 
 `verify` 用**真宿主代码**跑真装配：同一个宿主两个 scope，一个选模式、一个不选，
 断言两边不同，且不选的那边干净。**每条负向对照都先证明自己会失败** —— 这是纪律，

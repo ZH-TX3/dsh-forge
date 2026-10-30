@@ -17,6 +17,7 @@
   },
   "scripts": {
     "verify": "node scripts/verify.mjs",
-    "mods": "node scripts/mods-check.mjs"
+    "mods": "node scripts/mods-check.mjs",
+    "prompt": "node scripts/prompt-diff.mjs"
   }
 }
