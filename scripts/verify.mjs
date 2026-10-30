@@ -733,6 +733,202 @@ check(
   check('V-P', 'apply 只委托 mount、无返回值（返回对象在 root ctx 会抛 Invalid effect）', bad.length === 0, JSON.stringify(bad))
 }
 
+/* ------------------------------------------- V-H4 授信旁路（真瀑布派发） */
+
+// 前面 V-H1..H3 只测了纯函数。这里和 V-I 一个套路：
+// 先证明对照 scope 里宿主的答案生效，再证明我们把它接了过去。
+{
+  const approvalHost = new Context()
+  const downstream = (key) =>
+    approvalHost.waterfall(
+      scopeTarget({}, key),
+      'approval/request',
+      { agent: { id: 's' }, toolName: 'bash', reason: 'probe' },
+      () => Promise.resolve('rejected'),
+    )
+
+  const ctlApprovalKey = {}
+  createScope(approvalHost, ctlApprovalKey)
+  const ctlOutcome = await downstream(ctlApprovalKey)
+  check('V-H4a', '对照组：没有 forge 的 scope 里宿主 answerer 的 rejected 生效', ctlOutcome === 'rejected', `outcome=${ctlOutcome}`)
+
+  const bypassApprovalKey = {}
+  const approvalScope = createScope(approvalHost, bypassApprovalKey)
+  await approvalScope.ctx.plugin(approvalFeature, { enabled: true, allow: [] })
+  const bypassOutcome = await downstream(bypassApprovalKey)
+  check('V-H4b', '授信旁路真的接管了 approval/request 派发', bypassOutcome === 'allowed-once', `outcome=${bypassOutcome}`)
+
+  const narrowKey = {}
+  const narrowScope = createScope(approvalHost, narrowKey)
+  await narrowScope.ctx.plugin(approvalFeature, { enabled: true, allow: ['bash*'] })
+  const narrowOutcome = await approvalHost.waterfall(
+    scopeTarget({}, narrowKey),
+    'approval/request',
+    { agent: { id: 's' }, toolName: 'fs_write' },
+    () => Promise.resolve('rejected'),
+  )
+  check('V-H4c', '白名单未命中的请求交回宿主（仍是 rejected）', narrowOutcome === 'rejected', `outcome=${narrowOutcome}`)
+}
+
+/* ------------------------------------------------- V-A3 rules 多文件顺序 */
+
+{
+  const ruleDir = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-rules-'))
+  fs.writeFileSync(path.join(ruleDir, '02-second.md'), 'SECOND', 'utf8')
+  fs.writeFileSync(path.join(ruleDir, '01-first.md'), 'FIRST', 'utf8')
+  fs.writeFileSync(path.join(ruleDir, '10-third.md'), 'THIRD', 'utf8')
+
+  const rulesHost = await newHost()
+  const rulesKey = {}
+  const rulesScope = createScope(rulesHost, rulesKey)
+  await rulesScope.ctx.plugin(rulesFeature, { dir: ruleDir, order: 100 })
+  const rulesAsm = await rulesHost.systemPrompt.assemble({ scope: rulesKey })
+  const forgeRules = rulesAsm.contexts.filter((c) => c.name.startsWith('forge:rule:'))
+  check(
+    'V-A3',
+    'rules 按文件名前缀排序（01 → 02 → 10），order 递增',
+    forgeRules.length === 3 &&
+      forgeRules.map((c) => c.text).join(',') === 'FIRST,SECOND,THIRD' &&
+      forgeRules.map((c) => c.name).join(',') === 'forge:rule:01-first,forge:rule:02-second,forge:rule:10-third',
+    JSON.stringify(forgeRules.map((c) => c.name)),
+  )
+  fs.rmSync(ruleDir, { recursive: true, force: true })
+}
+
+/* ------------------------------------------- V-L6..L8 自动续跑的接线 */
+
+// 前面 V-L1..L5 只测判决。这里测接线：session/event 记 turn/end →
+// agent/status 转 idle → 延迟 → followup；以及 dispose 会不会清掉定时器。
+{
+  const continueFeature = cont
+  const mkAgent = (id, sent, busy = false) => ({
+    id,
+    status: 'idle',
+    inbox: { hasPending: () => busy },
+    followup: (msg) => sent.push(msg),
+  })
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms))
+
+  const ch = new Context()
+  const ck = {}
+  const cscope = createScope(ch, ck)
+  await cscope.ctx.plugin(continueFeature, { enabled: true, max: 2, delayMs: 5, text: '继续' })
+
+  const sent = []
+  const agent = mkAgent('s-continue', sent)
+  ch.emit(scopeTarget({}, ck), 'session/event', { id: 's-continue' }, { type: 'turn/end', seq: 3, reason: { kind: 'error' } })
+  ch.emit(scopeTarget({}, ck), 'agent/status', { agent, status: 'idle' })
+  await wait(40)
+  check(
+    'V-L6',
+    '接线：异常结束 + idle → 延迟后真的 followup 了「继续」',
+    sent.length === 1 && sent[0]?.content?.[0]?.text === '继续' && sent[0]?.role === 'user',
+    `sent=${JSON.stringify(sent)}`,
+  )
+
+  const sentBusy = []
+  const busyAgent = mkAgent('s-busy', sentBusy, true)
+  ch.emit(scopeTarget({}, ck), 'session/event', { id: 's-busy' }, { type: 'turn/end', seq: 4, reason: { kind: 'error' } })
+  ch.emit(scopeTarget({}, ck), 'agent/status', { agent: busyAgent, status: 'idle' })
+  await wait(40)
+  check('V-L7', '接线：inbox 有挂起消息时不 followup', sentBusy.length === 0, `sent=${sentBusy.length}`)
+
+  // dispose 必须清掉待发的定时器
+  const dh = new Context()
+  const dk = {}
+  const dscope = createScope(dh, dk)
+  await dscope.ctx.plugin(continueFeature, { enabled: true, max: 2, delayMs: 60, text: '继续' })
+  const sentDisposed = []
+  const disposedAgent = mkAgent('s-dispose', sentDisposed)
+  dh.emit(scopeTarget({}, dk), 'session/event', { id: 's-dispose' }, { type: 'turn/end', seq: 1, reason: { kind: 'error' } })
+  dh.emit(scopeTarget({}, dk), 'agent/status', { agent: disposedAgent, status: 'idle' })
+  await dscope.dispose()
+  await wait(120)
+  check('V-L8', '接线：dispose 清掉待发定时器（不会在卸载后再 followup）', sentDisposed.length === 0, `sent=${sentDisposed.length}`)
+}
+
+/* --------------------------------- V-L9 接线的负向对照 + V-Q 文件缓存边界 */
+
+{
+  // 负向对照：同样的夹具，只是关掉开关 —— 必须一个 followup 都不发。
+  const offHost = new Context()
+  const offKey = {}
+  const offScope = createScope(offHost, offKey)
+  await offScope.ctx.plugin(cont, { enabled: false, max: 2, delayMs: 5, text: '继续' })
+  const sentOff = []
+  offHost.emit(scopeTarget({}, offKey), 'session/event', { id: 's-off' }, { type: 'turn/end', seq: 2, reason: { kind: 'error' } })
+  offHost.emit(scopeTarget({}, offKey), 'agent/status', {
+    agent: { id: 's-off', status: 'idle', inbox: { hasPending: () => false }, followup: (m) => sentOff.push(m) },
+    status: 'idle',
+  })
+  await new Promise((r) => setTimeout(r, 40))
+  check('V-L9', '对照：enabled:false 时同一夹具一个 followup 都不发', sentOff.length === 0, `sent=${sentOff.length}`)
+}
+
+{
+  const files = await import(new URL('../lib/files.js', import.meta.url).href)
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-files-'))
+  const abs = path.join(dir, 'x.md')
+
+  fs.writeFileSync(abs, 'AAAA', 'utf8')
+  const first = files.readText(abs)
+  const st = fs.statSync(abs)
+
+  // 同长度改写，再把 mtime 拨回去 —— 指纹（mtime+size）完全一样。
+  fs.writeFileSync(abs, 'BBBB', 'utf8')
+  fs.utimesSync(abs, st.atime, st.mtime)
+  const stale = files.readText(abs)
+
+  // 长度变了 → 指纹变 → 必须读到新内容。
+  fs.writeFileSync(abs, 'CCCCCCC', 'utf8')
+  const fresh = files.readText(abs)
+
+  files.clearCache()
+  const afterClear = files.readText(abs)
+  const missing = files.readText(path.join(dir, 'nope.md'))
+
+  // 结论（实测）：同长度改写也会被读到新内容 —— 因为 mtime 挪了。
+  // 只有在「mtime 与 size 逐字节相同」时才会命中旧缓存，而那需要把时间戳
+  // 精确恢复到 100ns 级，实际不可达。这条断言把这个事实钉住，
+  // 免得以后有人为了「优化」把 size 从指纹里拿掉。
+  check(
+    'V-Q',
+    '缓存指纹含 mtime：同长度改写也读到新内容；长度变化即刷新；读不到返回 null',
+    first === 'AAAA' && stale === 'BBBB' && fresh === 'CCCCCCC' && afterClear === 'CCCCCCC' && missing === null,
+    `first=${first} sameSizeRewrite=${stale} sizeChanged=${fresh} missing=${missing}`,
+  )
+  fs.rmSync(dir, { recursive: true, force: true })
+}
+
+/* ------------------------------------- V-R 每个 feature 都有 README（防漂移） */
+
+{
+  const dirs = fs
+    .readdirSync(path.join(ROOT, 'features'), { withFileTypes: true })
+    .filter((d) => d.isDirectory())
+    .map((d) => d.name)
+  const missing = []
+  const thin = []
+  for (const name of dirs) {
+    const file = path.join(ROOT, 'features', name, 'README.md')
+    if (!fs.existsSync(file)) {
+      missing.push(name)
+      continue
+    }
+    const text = fs.readFileSync(file, 'utf8')
+    // 四行契约：能力 / 落点 / 失败模式 / 断言
+    if (!/\*\*能力\*\*/.test(text) || !/\*\*落点\*\*/.test(text) || !/\*\*失败模式\*\*/.test(text) || !/\*\*断言\*\*/.test(text)) {
+      thin.push(name)
+    }
+  }
+  check(
+    'V-R',
+    '每个 feature 都有一份含「能力/落点/失败模式/断言」的 README',
+    missing.length === 0 && thin.length === 0,
+    `缺文件=${JSON.stringify(missing)} 内容不全=${JSON.stringify(thin)}`,
+  )
+}
+
 /* ------------------------------------------------------------------ 输出 */
 
 const passed = results.filter((r) => r.ok).length
